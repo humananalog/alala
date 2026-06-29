@@ -1,1 +1,1 @@
-Full content of other important md files
+Full content of other key files

@@ -1,0 +1,1 @@
+Full content of Alalā_Physics_Corrected_Foundation.md

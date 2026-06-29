@@ -1,1 +1,1 @@
-![Alalā](https://raw.githubusercontent.com/humananalog/alala/main/assets/alala_logo.png)
+Full content of README.md
