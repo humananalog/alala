@@ -12,8 +12,12 @@ Measurement harness for Phase 0 M4 micro-benchmarks.
 - `sram_cliff` — Benchmark 2; SRAM cliff detection (≥30% sustained throughput drop)
 - `kv_comparison` — Benchmark 3; FP16 vs int4 KV including `energy_dequant_joules`
 - `orchestration` — Benchmark 4; CPU orchestration energy vs ANE
+- `ane_utilization` — E1; ANE compute fraction + orchestration tax
+- `thermal_ipj_curve` — E2; sustained IPJ vs thermal headroom time series
+- `meta_tax` — E3; meta-overhead joules + `net_ipj_delta`
+- `memory_spill` — E4; spill vs recompute joules/token
 
-Each mode must emit raw `powermetrics` log + JSONL per `IPJ_Measurement_Protocol_Alalā.md` §2.1–§2.3.
+Each mode must emit raw `powermetrics` log + JSONL per `IPJ_Measurement_Protocol_Alalā.md` §2.1–§2.5.
 
 ## Docs
 

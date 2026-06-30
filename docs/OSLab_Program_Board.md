@@ -1,6 +1,6 @@
 # OSLab Program Board — Alalā
 
-**Version**: 1.1  
+**Version**: 1.2  
 **Purpose**: Single source of truth for current status, risks, decisions, and progress.
 
 ## Current Phase
@@ -30,6 +30,23 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 | Orchestration overhead | `energy_cpu_orchestration_joules` / total joules ratio documented | Benchmark 4 / `orchestration` |
 
 **Governing principle**: Thermal headroom and sustained IPJ take precedence over peak throughput.
+
+## Methodology Gap Closure (2026-06-30)
+
+Four over-optimistic assumptions are now **testable hypotheses** with minimal decision-gate experiments on **physical Mac Mini M4 24 GB**. All require raw `powermetrics` + thermal logs and stated thermal headroom (`IPJ_Measurement_Protocol_Alalā.md` §2.5). **Stop if temperature exceeds safe sustained threshold.**
+
+| Experiment | Closes assumption | Decision gate | Status |
+|------------|-------------------|---------------|--------|
+| **E1** ANE Real Utilization | ANE-first routing covers forward pass | Redesign if `ane_compute_fraction_pct` < 50% or orchestration tax > 40% | Defined – awaiting harness |
+| **E2** Thermal + IPJ Curve | Sustained IPJ stable as thermal headroom shrinks | Redesign if sustained IPJ degrades ≥20% post-throttle | Defined – awaiting harness |
+| **E3** Meta-Tax | Self-improvement pays for itself in joules | Block cadence if `net_ipj_delta` ≤ 0 | Defined – awaiting harness |
+| **E4** Memory Spill Cost | Hierarchical memory beats spill at realistic working sets | Redesign if spill joules/token > recompute | Defined – awaiting harness |
+
+**Blocked on**: `harness/m4_energy_harness.py` modes `ane_utilization`, `thermal_ipj_curve`, `meta_tax`, `memory_spill` (see IPJ protocol §2.3–§2.4).
+
+**Posture**: Measure first on the single M4; redesign early if a gate fails. No model architecture or self-improvement cadence until applicable E-gates pass.
+
+**Docs**: `Phase0_AI_Coder_Task_List.md` § Phase 0 Extended; `Risk_Register.md` R-ANE-01 … R-MEM-04.
 
 ## Documentation Audit Log (2026-06-30)
 
@@ -61,17 +78,6 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 | `Meta_Controller_Skeleton_Alalā.md` | Threshold constants unspecified | Controller thresholds should be set from Phase 0 measured baselines |
 | Phase 0 success criteria | Sustained ANE utilization % TBD | Target % intentionally deferred until thermal baseline on hardware |
 
-## Gap-Closing Experiments (Decision Gates)
-
-| ID | Status | Blocked on |
-|----|--------|------------|
-| E1 – ANE Real Utilization Baseline | Defined – awaiting harness implementation | W1-01 harness + W1-04 |
-| E2 – Sustained Thermal + IPJ Degradation Curve | Defined – awaiting harness implementation | W1-01 harness + W1-02 |
-| E3 – Closed-Loop Meta-Tax Measurement | Defined – awaiting harness implementation | E1, E2 pass |
-| E4 – Memory Pressure & Spill Cost | Defined – awaiting harness implementation | W1-01 harness + W1-03 |
-
-Specs: `Phase0_AI_Coder_Task_List.md` § Phase 0 Extended. IPJ requirements: `IPJ_Measurement_Protocol_Alalā.md` §2.4–§2.5.
-
 ## Active Tasks (as of today)
 - W1-00: Docs audit (Tasks 1–5) — **Complete**
 - W1-01: Implement `harness/m4_energy_harness.py` — **Next**
@@ -89,7 +95,7 @@ Specs: `Phase0_AI_Coder_Task_List.md` § Phase 0 Extended. IPJ requirements: `IP
 - 2026-06-30: Thermal headroom and sustained IPJ take precedence over peak throughput.
 - 2026-06-30: No IPJ claim without raw powermetrics + thermal artifacts.
 - 2026-06-30: ANE-first routing is default; measure CPU orchestration before minimizing.
-- 2026-06-30: Adopted strict "no placeholder content" policy for all documentation.
+- 2026-06-30: Added E1–E4 gap-closing decision-gate experiments; risks R-ANE-01 … R-MEM-04.
 
 ## Blockers
 - `harness/m4_energy_harness.py` not implemented (required before physical M4 runs).
