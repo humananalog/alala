@@ -37,8 +37,11 @@ alala/
 # Verify docs and repo structure (required before commit)
 ./verify.sh
 
-# Phase 0 harness (when implemented on M4)
+# Phase 0 on physical Mac Mini M4 24 GB
+pip install -r requirements.txt
+./experiments/phase0_kickoff.sh          # setup_check + thermal_baseline
 python harness/m4_energy_harness.py --help
+python harness/validate_artifact.py --help
 ```
 
 ## Commit Workflow

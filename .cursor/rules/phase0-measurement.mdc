@@ -21,9 +21,10 @@ Read:
 - Never commit large log files — `logs/` contents are gitignored.
 
 ## Harness requirements (`harness/m4_energy_harness.py`)
-- Support modes: `thermal_baseline`, `sram_cliff`, `kv_comparison`
-- Use `powermetrics` for CPU/GPU/ANE power where available
-- CLI with `--mode`, `--duration`, `--context`, `--iterations` flags per benchmark docs
+- Modes: `setup_check`, `thermal_baseline`, `sram_cliff`, `kv_comparison`, `orchestration`, `ane_utilization`, `thermal_ipj_curve`, `meta_tax`, `memory_spill`
+- Validate artifacts: `harness/validate_artifact.py --require-m4`
+- Mark criteria: `harness/mark_validated.py`
+- Kickoff script: `experiments/phase0_kickoff.sh`
 
 ## Code style
 - Python 3.11+; type hints on public functions

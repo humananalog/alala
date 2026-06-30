@@ -11,13 +11,13 @@ This document contains explicit, numbered tasks for Phase 0. Complete them in or
 ## Week 1 Tasks (ANE Characterization Focus)
 
 **Task W1-01: Environment & Logging Setup**
-1. Create the directory structure: `experiments/`, `logs/`, `harness/`, `results/`
-2. Copy `m4_energy_harness.py` into the `harness/` folder.
-3. Make the script executable if needed.
-4. Run a basic test to verify `powermetrics` access and logging works.
-5. Log the result in `logs/setup_log.jsonl`
+1. Confirm directory structure: `experiments/`, `logs/`, `harness/`, `results/`, `checkpoints/`
+2. `pip install -r requirements.txt`
+3. Run `./verify.sh` (includes harness smoke tests)
+4. On physical M4: `sudo python harness/m4_energy_harness.py --mode setup_check --duration 30`
+5. Log result in `logs/setup_log.jsonl` (written automatically)
 
-**Success Criteria**: Harness can log power and temperature for at least 30 seconds without errors.
+**Success Criteria**: `setup_check` completes 30+ seconds without errors; `validate_artifact.py` passes on output.
 
 **Task W1-02: Thermal Baseline**
 1. Ensure the machine is at a stable cool temperature (let it idle for 10+ minutes if warm).

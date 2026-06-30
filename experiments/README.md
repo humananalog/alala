@@ -1,6 +1,14 @@
 # Experiments
 
-Experiment scripts and configs for Phase 0 characterization.
+## Phase 0 kickoff (physical M4)
+
+```bash
+./experiments/phase0_kickoff.sh
+```
+
+Runs `setup_check` + `thermal_baseline`. See `docs/OSLab_Program_Board.md` kickoff checklist.
+
+## General
 
 Each experiment should follow `docs/Alalā_Experimentation_Framework.md`:
 

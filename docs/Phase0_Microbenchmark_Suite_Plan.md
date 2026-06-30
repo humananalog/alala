@@ -96,9 +96,13 @@ Harness target: `harness/m4_energy_harness.py` (Phase 0 implementation).
 | `thermal_baseline` | IPJ §2.1, Benchmark 1 | `sustained_power_w`, thermal curve, safe envelope |
 | `sram_cliff` | IPJ §2.2, Benchmark 2 | `L_cliff`, per-context JSONL + powermetrics |
 | `kv_comparison` | IPJ §2.1 denominator, Benchmark 3 | `energy_dequant_joules`, int4 vs FP16 IPJ delta |
-| `orchestration` | IPJ §2.1, Benchmark 4 | `energy_cpu_orchestration_joules`, ANE vs CPU split |
+| `orchestration` | IPJ §2.1, Benchmark 4 | `energy_cpu_orchestration_joules`, `orchestration_tax_pct` |
+| `ane_utilization` | IPJ §2.4 E1 | `ane_compute_fraction_pct`, orchestration tax |
+| `thermal_ipj_curve` | IPJ §2.4 E2 | IPJ vs thermal headroom time series |
+| `meta_tax` | IPJ §2.4 E3 | `net_ipj_delta`, meta joules breakdown |
+| `memory_spill` | IPJ §2.4 E4 | spill vs recompute joules/token |
 
-See `How_to_Run_First_Micro_Benchmark_on_M4_Alalā.md` for exact commands.
+See `How_to_Run_First_Micro_Benchmark_on_M4_Alalā.md` and `experiments/phase0_kickoff.sh`.
 
 ## Success Gate for Phase 0
 

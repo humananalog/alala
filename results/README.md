@@ -14,7 +14,11 @@ python harness/validate_artifact.py --require-m4 logs/<experiment_id>.jsonl
 
 ## Measurement status
 
-Track closure of Phase 0 success criteria in `measurement_status.json`. Set `m4_validated: true` and `artifact_path` only after a physical M4 run with real `powermetrics` logs.
+Update `results/measurement_status.json` with `m4_validated: true` and artifact path after each criterion closes.
+
+```bash
+python harness/mark_validated.py --criterion thermal_baseline --jsonl logs/<experiment_id>.jsonl
+```
 
 ## Layout
 

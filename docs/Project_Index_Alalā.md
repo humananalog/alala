@@ -2,7 +2,7 @@
 
 **Status**: Authoritative entry point (as of 2026-06-30)  
 **Repository**: https://github.com/humananalog/alala  
-**Current phase**: Phase 0 – Harness ready; first physical M4 measurements pending
+**Current phase**: Phase 0 – Execution kickoff (run `experiments/phase0_kickoff.sh` on physical M4)
 
 **Execution Model**: Grok Build (local AI coding agent on the physical Mac Mini M4 24 GB) is the primary executor (~98%). All documentation is structured to be directly followable by an AI coder.
 

@@ -5,9 +5,23 @@
 
 ## Current Phase
 
-**Phase 0 – Harness ready; first physical M4 measurements pending**
+**Phase 0 – Execution kickoff** (harness + docs complete; run on physical M4)
 
-Gap-closing experiments E1–E4 are implemented in harness with distinct workloads. Run on physical Mac Mini M4 24 GB with `sudo` to close measurement criteria.
+All loose ends closed in repo. **Single remaining gate**: physical Mac Mini M4 24 GB + `sudo` for real measurements.
+
+## Kickoff Checklist (run in order on M4)
+
+| Step | Command | Done when |
+|------|---------|-----------|
+| 1 | `pip install -r requirements.txt && ./verify.sh` | verify passes |
+| 2 | `chmod +x experiments/phase0_kickoff.sh && ./experiments/phase0_kickoff.sh` | setup_check + thermal_baseline JSONL |
+| 3 | `python harness/validate_artifact.py --require-m4 logs/<id>.jsonl` | validation passes |
+| 4 | `python harness/mark_validated.py --criterion thermal_baseline --jsonl logs/<id>.jsonl` | status updated |
+| 5 | Update this board with thermal envelope + `--max-temp-c` | safe threshold documented |
+| 6 | Week 1: `sram_cliff`, `kv_comparison`, `orchestration` | per task list |
+| 7 | E1–E4 gap-closing experiments | decision gates measured |
+
+**One-liner after idle**: `./experiments/phase0_kickoff.sh`
 
 ## Lab Readiness Scorecard (target: A all sections)
 
@@ -73,10 +87,15 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 
 1. **R-GAP-01** → E1 | 2. **R-GAP-02** → E2 | 3. **R-GAP-03** → E3 | 4. **R-GAP-04** → E4
 
+## Deferred to Phase 1 (not kickoff blockers)
+
+- Fused ANE int4 KV kernel (harness has distinct `kv_fp16` / `kv_int4` workload paths for Phase 0)
+- Compiler pass IPJ validation (`Compiler_Passes_Skeleton_Alalā.md` — gated on Phase 0 numbers)
+- Meta-controller threshold constants (populate from E1/E2/W1-02 results in `Meta_Controller_Skeleton_Alalā.md`)
+
 ## Blockers
 
-- Physical Mac Mini M4 24 GB + `sudo` for real `powermetrics` (only remaining gate for validated data grade **A**).
-- Fused ANE int4 KV kernel (Phase 1; harness has distinct workload paths today).
+- **Physical Mac Mini M4 24 GB + sudo** — only gate before Phase 0 data exists (expected; not a repo defect).
 
 ## Next Milestone
 

@@ -8,12 +8,10 @@
 ## Week 1: Foundation & Thermal Characterization
 
 ### Day 1–2: Environment Setup
-- Create full directory structure (`experiments/`, `logs/`, `harness/`, `results/`, `checkpoints/`)
-- Install and verify dependencies
-- Copy and test the energy logging harness
-- Verify `powermetrics` access and basic logging works
+- `pip install -r requirements.txt` && `./verify.sh`
+- On physical M4: `./experiments/phase0_kickoff.sh` **or** `sudo python harness/m4_energy_harness.py --mode setup_check --duration 30`
 
-**Acceptance Criteria**: Harness can log power + temperature for 60 seconds without errors.
+**Acceptance Criteria**: `setup_check` passes; `logs/setup_log.jsonl` exists.
 
 ### Day 3–4: Thermal Baseline
 - Run idle + sustained load thermal characterization
