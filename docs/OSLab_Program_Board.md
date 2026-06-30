@@ -14,10 +14,9 @@ Gap-closing experiments E1–E4 defined as decision gates. Awaiting harness impl
 **Target**: Harness implementation on physical Mac Mini M4 24 GB, then Week 1–2 measurements
 
 **Readiness (2026-06-30)**:
-- Documentation audit Tasks 1–5 **complete**
-- `./verify.sh` passing
-- `harness/m4_energy_harness.py` **implemented** (W1-01 skeleton: powermetrics + JSONL; MLX workloads pending)
-- Next action: run W1-02 thermal baseline on **physical M4** with `sudo`
+- `harness/m4_energy_harness.py` + `harness/workloads.py` — W1-01 complete; W1-02 idle+sustained thermal baseline ready
+- MLX auto-detected on M4; CPU fallback off-hardware or without mlx
+- **Next**: run `setup_check` then `thermal_baseline` on physical M4 with `sudo`
 
 ## Phase 0 Success Criteria (Measurable M4 Numbers)
 
@@ -82,8 +81,8 @@ Four over-optimistic assumptions are now **testable hypotheses** with minimal de
 
 ## Active Tasks (as of today)
 - W1-00: Docs audit (Tasks 1–5) — **Complete**
-- W1-01: Implement `harness/m4_energy_harness.py` — **Complete** (skeleton; dry-run validated)
-- W1-02: Thermal Baseline on physical M4 — **Next** (`sudo python harness/m4_energy_harness.py --mode thermal_baseline --duration 600`)
+- W1-01: Harness + setup_check — **Complete**
+- W1-02: Thermal Baseline on physical M4 — **Ready** (`--idle-duration 600 --duration 600`)
 - W1-03: ANE SRAM Cliff Characterization — Blocked on physical M4 + MLX workload
 
 ## Key Risks (Top 5 — see `Risk_Register.md`)
@@ -100,8 +99,8 @@ Four over-optimistic assumptions are now **testable hypotheses** with minimal de
 - 2026-06-30: W1-01 harness skeleton landed (`m4_energy_harness.py`, 8 modes, powermetrics + JSONL).
 
 ## Blockers
-- Physical Mac Mini M4 24 GB required for real `powermetrics` data (use `--dry-run` off-hardware only).
-- MLX/ANE decode workloads not yet integrated into harness modes (stubs use CPU sustained load).
+- **Physical Mac Mini M4 24 GB** required for real `powermetrics` (not `--dry-run`).
+- Fused int4 KV and ANE-forward decode kernels not yet integrated (kv_comparison uses same workload both paths).
 
 ## Next Milestone
 Implement harness per IPJ protocol §2.3; run thermal baseline on physical Mac Mini M4 24 GB.
