@@ -1,0 +1,33 @@
+---
+alwaysApply: true
+description: Ban AI-generated prose markers in user-facing text
+---
+
+# No AI Marker Text
+
+All user-facing prose in this repo (README, docs, commit messages, PR descriptions) must read like careful human technical writing.
+
+## Banned patterns
+
+- **Em dashes (—)** as rhetorical separators. Use a period, comma, colon, or parentheses instead.
+- **En-dash lists used as punchlines** (e.g. "Feature — description" in every bullet).
+- **Stock AI openers/closers**: "In today's landscape", "It's worth noting", "At its core", "This repository serves as", "Built to...", tagline footers.
+- **Hollow intensifiers**: "robust", "comprehensive", "seamless", "cutting-edge", "game-changer", "delve", "leverage" (as verb), "utilize" (when "use" works).
+- **Engagement bait**: "Contributions are welcome!", "Say the word and...", forced calls to action.
+- **Decorative horizontal rules** (`---`) between every section in short docs.
+- **Over-bold**: bolding every other phrase for emphasis.
+
+## Prefer instead
+
+- Short sentences. One idea per sentence where possible.
+- Concrete nouns and measured claims (numbers, file paths, commands).
+- Plain connectors: "because", "so", "for example", "see".
+- Lists that start with the thing, then a colon: `Harness: four modes in m4_energy_harness.py`.
+
+## Scope
+
+Applies to README, `docs/`, AGENTS.md, harness/experiment READMEs, and agent replies to humans. Code comments and identifiers are exempt unless they are user-facing docs.
+
+## Check before commit
+
+Scan changed markdown for `—` (U+2014) and the banned phrases above. Rewrite before pushing.

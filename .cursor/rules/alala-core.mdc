@@ -29,6 +29,7 @@ You are working on Alalā — physics-first AI on Apple Silicon M4 maximizing In
 - Be precise and technical; include numbers (IPJ, joules, tokens/s, utilization %) when relevant.
 - State assumptions; flag risks and unknowns.
 - Escalate to human for >10% IPJ impact or architectural decisions.
+- Follow @.cursor/rules/no-ai-markers.mdc: no em dashes, no stock AI phrasing in user-facing text.
 
 ## References
 - Operational context: @AGENTS.md
