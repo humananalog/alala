@@ -7,6 +7,8 @@
 
 **Phase 0 – Pre-hardware-measurement** (docs audit **complete**, harness implementation next)
 
+Gap-closing experiments E1–E4 defined as decision gates. Awaiting harness implementation on physical M4.
+
 **Prior label**: ANE Characterization & Measurement Infrastructure  
 **Started**: 2026-06-30  
 **Target**: Harness implementation on physical Mac Mini M4 24 GB, then Week 1–2 measurements
@@ -85,10 +87,10 @@ Four over-optimistic assumptions are now **testable hypotheses** with minimal de
 - W1-03: ANE SRAM Cliff Characterization — Blocked on harness
 
 ## Key Risks (Top 5 — see `Risk_Register.md`)
-1. **R-ANE-01** Low real ANE coverage → orchestration tax (mitigation: E1)
-2. **R-THERM-02** Thermal throttling erodes sustained IPJ (mitigation: E2)
-3. **R-META-03** Meta-tax exceeds marginal gains (mitigation: E3)
-4. **R-MEM-04** Expensive SRAM spills / 24 GB pressure (mitigation: E4)
+1. **R-GAP-01** Low real ANE forward-pass coverage (mitigation: E1)
+2. **R-GAP-02** Thermal throttling erodes sustained IPJ (mitigation: E2)
+3. **R-GAP-03** Meta-tax exceeds marginal gains (mitigation: E3)
+4. **R-GAP-04** Working-set pressure and SRAM spill cost (mitigation: E4)
 5. **R03** SRAM cliff impact on long-context decode
 
 ## Recent Decisions
