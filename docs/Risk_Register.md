@@ -13,6 +13,23 @@
 
 **Thermal headroom and sustained IPJ take precedence over peak throughput.** Risks that inflate peak benchmarks while degrading sustained useful work per joule are High impact.
 
+## Risk → Experiment Mitigation Map
+
+```mermaid
+flowchart LR
+  R01[R01 noisy powermetrics] --> M1[Raw logs + trials]
+  R02[R02 thermal throttle] --> E2[E2 thermal_ipj_curve]
+  R03[R03 SRAM cliff] --> W103[W1-03 sram_cliff]
+  R05[R05 ANE orchestration] --> E1[E1 ane_utilization]
+  R06[R06 dequant erodes gains] --> W104[W1-04 kv_comparison]
+  R10[R10 meta-tax] --> E3[E3 meta_tax]
+  R04[R04 24 GB pressure] --> E4[E4 memory_spill]
+  E1 --> GATE[Architecture decision gate]
+  E2 --> GATE
+  E3 --> GATE
+  E4 --> GATE
+```
+
 ## Gap-Closing Risks (Decision Gates)
 
 | ID | Risk | Mitigation | Status |

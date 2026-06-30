@@ -35,6 +35,18 @@ Where:
 
 When \( C > D \), beneficial coherence grows exponentially. When \( C < D \), it decays.
 
+```mermaid
+flowchart TD
+  CHG[Proposed change] --> HCA{HCA Impact\nStatement}
+  HCA -->|C > D| GROW["dE/dt > 0\nbeneficial coherence grows"]
+  HCA -->|C < D| DECAY["dE/dt < 0\nreject or rollback"]
+  GROW --> LOG[Log HFPS + IPJ at checkpoint]
+  DECAY --> RB[Automatic review / rollback]
+  LOG --> HFPS{HFPS degradation?}
+  HFPS -->|significant drop| RB
+  HFPS -->|stable or up| KEEP[Keep change]
+```
+
 ## 3. Operational Requirements
 
 ### 3.1 Mandatory HCA Impact Statement

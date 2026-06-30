@@ -10,6 +10,20 @@
 
 This document is the single source of truth for navigating the entire Alalā documentation set (**19 indexed docs** in `docs/`).
 
+## Navigation Map
+
+```mermaid
+flowchart LR
+  IDX[Project_Index] --> CORE[Physics + HCA]
+  IDX --> EXEC[Program Board + Playbook]
+  IDX --> MEAS[IPJ Protocol + How-to-Run]
+  IDX --> P0[Phase0 Tasks + Benchmarks]
+  IDX --> ARCH[Memory + Compiler]
+  IDX --> RISK[Risk Register]
+  MEAS --> HARNESS[m4_energy_harness.py]
+  P0 --> KICK[phase0_kickoff.sh]
+```
+
 ## 1. Quick Start for Grok Build (Day 1)
 
 1. Read this entire index first.

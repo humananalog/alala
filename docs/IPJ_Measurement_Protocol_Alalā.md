@@ -17,6 +17,22 @@ Where:
 
 **M4 grounding**: On unified memory, \( J \) includes energy for data movement (unified memory ↔ ANE on-chip SRAM spills), dequantization, CPU orchestration between ANE invocations, and ANE/GPU/CPU compute — not compute alone. **Sustained IPJ under thermal steady state takes precedence over peak IPJ measured before throttling.**
 
+## IPJ Measurement Pipeline
+
+```mermaid
+flowchart LR
+  RUN[Harness run on M4] --> PM[powermetrics log]
+  RUN --> JL[JSONL summary]
+  PM --> VAL[validate_artifact.py]
+  JL --> VAL
+  VAL -->|pass| IPJ[Publish IPJ_phase0]
+  VAL -->|fail| REJ[Reject claim]
+  IPJ --> GATE{Gating rule}
+  GATE -->|marginal IPJ > 0| ACC[Accept change]
+  GATE -->|HCA ≥ 0| ACC
+  GATE -->|regression| RB[Rollback]
+```
+
 ## 2. Composite Utility \( U(\text{task}) \)
 
 \( U(\text{task}) \) includes:

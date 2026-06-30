@@ -8,6 +8,35 @@
 
 **Rule**: No IPJ claim is valid without raw `powermetrics` logs + thermal data attached to the result (`IPJ_Measurement_Protocol_Alalā.md` §2.1).
 
+## Benchmark Run Flow
+
+```mermaid
+flowchart TD
+  PRE[Idle 10+ min\ncaffeinate -dims] --> SETUP[setup_check]
+  SETUP --> TB[thermal_baseline]
+  TB -->|safe envelope| SC[sram_cliff]
+  SC --> KV[kv_comparison]
+  KV --> OR[orchestration]
+  TB --> VAL[validate_artifact.py]
+  SC --> VAL
+  KV --> VAL
+  OR --> VAL
+  VAL --> MS[mark_validated.py\n→ measurement_status.json]
+  MS --> PB[Update Program Board]
+```
+
+## Measurement Environment Profile
+
+For reproducible baselines on macOS:
+
+| Tier | Action | Purpose |
+|------|--------|---------|
+| **Tier 1** (always) | Close user apps; idle 10+ min; run `caffeinate -dims` during benchmarks | Stable thermal + prevent sleep |
+| **Tier 2** (recommended) | Pause Time Machine; defer macOS updates during measurement window | Reduce background I/O and CPU spikes |
+| **Do not** | Disable core macOS system services | Risks unstable system; not required for Phase 0 |
+
+Document which tier was used in JSONL `notes` and Program Board.
+
 ## Prerequisites
 
 - **Physical Mac Mini M4 24 GB** — no simulation, no remote SSH to non-M4 hosts, no cloud instances

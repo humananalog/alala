@@ -33,7 +33,7 @@ We work strictly from first principles, with deep co-design between the model ar
 
 ## Status
 
-**Phase 0 execution kickoff ready** (v0.4.3). Harness, tests, validation, and docs complete. Next step: run `./experiments/phase0_kickoff.sh` on physical Mac Mini M4 24 GB with `sudo`.
+**Phase 0 execution kickoff ready** (v0.4.4). Harness, tests, validation, and docs complete. Next step: run `./experiments/phase0_kickoff.sh` on physical Mac Mini M4 24 GB with `sudo`.
 
 ```bash
 pip install -r requirements.txt

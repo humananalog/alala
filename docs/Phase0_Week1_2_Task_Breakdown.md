@@ -5,6 +5,23 @@
 
 **Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
 
+## Week 1–2 Timeline
+
+```mermaid
+gantt
+  title Phase 0 Week 1-2 (physical M4)
+  dateFormat X
+  axisFormat %s
+  section Week1
+  Setup + verify           :0, 2
+  Thermal baseline W1-02   :2, 4
+  SRAM cliff W1-03         :5, 7
+  section Week2
+  KV comparison W1-04      :8, 10
+  Orchestration            :11, 12
+  E1-E4 + report           :13, 14
+```
+
 ## Week 1: Foundation & Thermal Characterization
 
 ### Day 1–2: Environment Setup

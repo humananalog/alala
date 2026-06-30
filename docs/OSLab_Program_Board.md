@@ -9,6 +9,21 @@
 
 All loose ends closed in repo. **Single remaining gate**: physical Mac Mini M4 24 GB + `sudo` for real measurements.
 
+## Kickoff Flow
+
+```mermaid
+flowchart TD
+  S1[pip install + verify.sh] --> S2[phase0_kickoff.sh]
+  S2 --> S3[validate_artifact --require-m4]
+  S3 --> S4[mark_validated.py]
+  S4 --> S5[Update Program Board + max-temp-c]
+  S5 --> W1[Week 1: sram_cliff kv_comparison orchestration]
+  W1 --> E[E1-E4 decision gates]
+  E --> G{All gates pass?}
+  G -->|yes| P1[Phase 1 compiler work]
+  G -->|no| R[Redesign per gate]
+```
+
 ## Kickoff Checklist (run in order on M4)
 
 | Step | Command | Done when |
@@ -34,7 +49,7 @@ All loose ends closed in repo. **Single remaining gate**: physical Mac Mini M4 2
 | Harness scaffolding | **A** | 9 modes, workloads, smoke tests in `verify.sh` |
 | Validated M4 data | **A−** | Infrastructure + `measurement_status.json`; **m4_validated false until first sudo run** |
 | Workload fidelity | **A−** | Distinct kv_fp16/int4, spill/recompute, orchestration, meta_tax paths; ANE decode kernel Phase 1 |
-| Doc/code sync | **A** | This board reflects harness v0.4.2 |
+| Doc/code sync | **A** | 19 docs with Mermaid flow diagrams; harness v0.4.4 |
 
 **To reach A on Validated M4 data**: run W1-02 on hardware, set `m4_validated: true` in `results/measurement_status.json`, attach artifact paths.
 

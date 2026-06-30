@@ -5,6 +5,18 @@
 
 **Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
 
+## Memory Tier Stack
+
+```mermaid
+flowchart TB
+  HOT["Hot Path — Decode / Agent Loop"]
+  HOT --> SRAM["ANE on-chip SRAM ~28–30 MB\nweights + KV slice + activations"]
+  SRAM -->|spill past cliff| UM["Unified Memory 24 GB\nshared CPU / GPU / ANE"]
+  UM --> SLC["SLC — hardware managed"]
+  UM --> SSD["SSD — checkpoints only"]
+  SRAM -->|fused int4 KV + tiling| IPJ["Minimize bytes moved → higher sustained IPJ"]
+```
+
 ## Design Principles
 
 1. **ANE on-chip SRAM is precious** — ~28–30 MB per ANE tile; exceeding this spills to unified memory (LPDDR5X, ~100–120 GB/s) on every hot-path access.

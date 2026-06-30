@@ -5,6 +5,23 @@
 
 **IPJ authority**: All improvement IPJ claims use operational definitions in `IPJ_Measurement_Protocol_Alalā.md` §2.1 (Phase 0) and §2.4 E3 (meta-tax). No marginal IPJ without raw `powermetrics` + thermal logs per §2.5.
 
+## Improvement Cycle
+
+```mermaid
+flowchart TD
+  P[Propose] --> E[Evaluate\nHCA + marginal IPJ]
+  E -->|reject| LOG1[Log rejection reason]
+  E -->|pass| T[Test on physical M4]
+  T --> M[Measure sustained IPJ\n+ orchestration tax + HFPS]
+  M --> D{Decide}
+  D -->|keep| CP[Checkpoint]
+  D -->|rollback| RB[Rollback]
+  D -->|modify| P
+  CP --> LA[Log & Archive]
+  RB --> LA
+  LOG1 --> LA
+```
+
 ## Core Rules
 
 1. **Improvement must be measurable**  

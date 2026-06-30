@@ -4,7 +4,21 @@
 **For**: Grok Build (local AI coding agent)  
 **Rules**: You must strictly follow `AI_Coder_Rules_Guidelines_Alalā.md` at all times.
 
-**Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold. No IPJ claim without raw `powermetrics` logs + thermal data (`IPJ_Measurement_Protocol_Alalā.md` §2.1).
+**Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
+
+## Phase 0 Execution Order
+
+```mermaid
+flowchart TD
+  W101[W1-01 setup_check] --> W102[W1-02 thermal_baseline]
+  W102 --> W103[W1-03 sram_cliff]
+  W103 --> W104[W1-04 kv_comparison]
+  W104 --> W105[W1-05 report]
+  W102 --> E2[E2 thermal_ipj_curve]
+  W104 --> E1[E1 ane_utilization]
+  W103 --> E4[E4 memory_spill]
+  E1 --> E3[E3 meta_tax]
+```
 
 This document contains explicit, numbered tasks for Phase 0. Complete them in order unless the Program Board instructs otherwise.
 

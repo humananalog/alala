@@ -5,6 +5,19 @@
 
 **Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
 
+## Hot-Path Access Flow
+
+```mermaid
+flowchart LR
+  DEC[Decode token] --> BUD{Working set\n≤ 28–30 MB?}
+  BUD -->|yes| SRAM[Keep in ANE SRAM\nfused int4 KV]
+  BUD -->|no| TILE[Tile + recompute\nor selective spill]
+  SRAM --> ANE[ANE-first graph]
+  TILE --> ANE
+  ANE --> LOG[Log bytes moved +\ndequant joules]
+  LOG --> IPJ[Sustained IPJ at\nthermal steady state]
+```
+
 ## Core Guidelines
 
 ### 1. Keep Hot Working Sets in ANE On-Chip SRAM

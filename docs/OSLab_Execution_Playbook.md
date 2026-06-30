@@ -7,6 +7,18 @@
 
 **Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
 
+## Daily Loop
+
+```mermaid
+flowchart LR
+  A[Program Board] --> B[Task List]
+  B --> C[Run harness on M4]
+  C --> D[JSONL + powermetrics]
+  D --> E[validate_artifact]
+  E --> F[Update Board]
+  F --> G[verify.sh + commit]
+```
+
 ## 1. Daily Rhythm
 
 1. Read `OSLab_Program_Board.md` for current status and blockers.

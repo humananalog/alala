@@ -7,6 +7,21 @@
 
 **Priority**: Thermal headroom and sustained IPJ take precedence over peak throughput. Benchmarks establish safe operating envelopes before optimization claims.
 
+## Benchmark Execution Order
+
+```mermaid
+flowchart TD
+  B1["Benchmark 1\nThermal Baseline"] --> B2["Benchmark 2\nSRAM Cliff"]
+  B2 --> B3["Benchmark 3\nint4 KV vs FP16"]
+  B1 --> B4["Benchmark 4\nOrchestration Overhead"]
+  B2 --> E4["E4 Memory Spill"]
+  B3 --> E1["E1 ANE Utilization"]
+  B1 --> E2["E2 Thermal IPJ Curve"]
+  E1 --> E3["E3 Meta-Tax"]
+  B1 --> ENV[Safe sustained envelope]
+  ENV --> B2
+```
+
 ## Objectives
 
 1. Establish reliable baselines for **sustained** IPJ, ANE utilization, thermal behavior, and SRAM limits on physical M4 hardware.

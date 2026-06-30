@@ -17,6 +17,22 @@ Populate after W1-02 / E1 / E2 on physical hardware. Until then, controller uses
 
 See `results/measurement_status.json` for validation state.
 
+## Decision Flow
+
+```mermaid
+flowchart TD
+  PC[Proposed change] --> HCA{HCA impact ≥ 0?}
+  HCA -->|no| REJ1[Reject: HCA violation]
+  HCA -->|yes| IPJ{Marginal IPJ > 0?}
+  IPJ -->|no| REJ2[Reject: no net IPJ]
+  IPJ -->|yes| RES{Within thermal +\nenergy budget?}
+  RES -->|no| REJ3[Reject: resource limit]
+  RES -->|yes| APP[Apply behind checkpoint]
+  APP --> POST{Post-change IPJ\nregression?}
+  POST -->|significant| RB[Automatic rollback]
+  POST -->|ok| KEEP[Keep + audit log]
+```
+
 ## High-Level Design
 
 The meta-controller sits above the main agent loop and decides:

@@ -5,6 +5,21 @@
 
 **Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
 
+## Experiment Lifecycle
+
+```mermaid
+flowchart TD
+  H[Hypothesis] --> M[Method + controls]
+  M --> RUN[Run on physical M4]
+  RUN --> LOG[JSONL + powermetrics]
+  LOG --> VAL[validate_artifact.py]
+  VAL --> AN[Analysis vs success criteria]
+  AN --> DEC{Decision}
+  DEC -->|keep| PB[Update Program Board]
+  DEC -->|rollback| PB
+  DEC -->|investigate| H
+```
+
 ## Experiment Structure
 
 Every experiment should contain:

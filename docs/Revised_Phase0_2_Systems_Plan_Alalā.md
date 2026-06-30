@@ -13,6 +13,19 @@ We follow an "xAI-style" low-level optimization mindset, adapted to the realitie
 - Make data movement and orchestration cost visible and minimized.
 - Co-design the compiler/runtime with the hardware instead of fighting it.
 
+## Phase Roadmap
+
+```mermaid
+flowchart TD
+  P0["Phase 0: Characterization\nthermal + SRAM cliff + harness"]
+  P1["Phase 1: Compiler Passes\nshape + fused KV + tiling"]
+  P2["Phase 2: Co-Design + Meta\npipelining + meta-controller"]
+  P3["Phase 3: Production\nlong-horizon agents"]
+  P0 -->|measurement infra + bottlenecks| P1
+  P1 -->|decode IPJ gain| P2
+  P2 -->|sustained ANE + net meta IPJ| P3
+```
+
 ## Phase 0: Characterization (Current)
 
 **Focus**: Understand actual Mac Mini M4 24 GB behavior under realistic ANE-first workloads.

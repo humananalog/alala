@@ -3,6 +3,21 @@
 **Version**: 1.0  
 **Applies to**: Grok Build and any AI coding agent working on this project.
 
+## Agent Workflow
+
+```mermaid
+flowchart TD
+  A[Read Project_Index] --> B[Read task-specific doc]
+  B --> C[Check OSLab_Program_Board]
+  C --> D[Execute on physical M4]
+  D --> E[Log JSONL + powermetrics]
+  E --> F[Run ./verify.sh]
+  F --> G[Update Program Board]
+  G --> H{IPJ or thermal gate?}
+  H -->|pass| I[Commit]
+  H -->|fail| J[Stop and redesign]
+```
+
 ## Core Principles (Non-Negotiable)
 
 1. **Measurement First**  

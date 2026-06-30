@@ -5,6 +5,22 @@
 
 **Note**: All "Expected Benefit" claims require Phase 0+ measured IPJ on physical M4 before production use.
 
+## Compiler Pass Pipeline
+
+```mermaid
+flowchart LR
+  IR[Computation graph] --> P1["Pass 1\nShape Specialization"]
+  P1 --> P2["Pass 2\nFused int4 KV + Attention"]
+  P2 --> P3["Pass 3\nSRAM-Aware Tiling"]
+  P3 --> ANE[ANE-compiled graph]
+  P1 --> M1[Measure dispatch overhead]
+  P2 --> M2[Measure dequant joules]
+  P3 --> M3[Measure spill vs recompute]
+  M1 --> GATE{IPJ gate}
+  M2 --> GATE
+  M3 --> GATE
+```
+
 ## Design Principles
 
 - Prefer static shape specialization over dynamic shapes when possible.

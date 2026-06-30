@@ -20,6 +20,22 @@ All design choices in Alalā must be traceable to these measured or well-charact
 
 **Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
 
+## M4 Physics Stack (Design Traceability)
+
+```mermaid
+flowchart TB
+  subgraph M4["Mac Mini M4 24 GB"]
+    ANE["ANE on-chip SRAM ~28–30 MB"]
+    UM["Unified Memory 24 GB LPDDR5X"]
+    TH["Thermal envelope + DVFS"]
+    ANE -->|working set exceeds budget| UM
+    UM -->|sustained load| TH
+    TH -->|throttle| ANE
+  end
+  ANE -->|ANE-first routing| IPJ["Sustained IPJ > peak burst"]
+  UM -->|bytes moved dominate energy| IPJ
+```
+
 ## 1. Core Diagnosis (Physics-Grounded Weaknesses)
 
 The original framing had several systemic issues that violate M4 physics realities:
@@ -82,6 +98,16 @@ Where $U(\text{task})$ is a **composite utility** that includes:
 - Minimize Python-level orchestration in the hot path; **CPU orchestration energy and latency must be measured** (Benchmark 4 in `Phase0_Microbenchmark_Suite_Plan.md`) and subtracted from IPJ claims.
 
 ## 3. Phase Overview (Corrected)
+
+```mermaid
+flowchart LR
+  P0["Phase 0\nCharacterization"] --> P1["Phase 1\nCompiler Passes"]
+  P1 --> P2["Phase 2\nCo-Design + Meta"]
+  P2 --> P3["Phase 3\nProduction"]
+  P0 -->|measure IPJ + SRAM cliff| G0[Exit Gate]
+  P1 -->|decode IPJ gain| G1[Exit Gate]
+  P2 -->|sustained ANE + net meta IPJ| G2[Exit Gate]
+```
 
 **Phase 0**: ANE Characterization & Measurement Infrastructure (Current)
 - Micro-benchmarks for SRAM cliff, fused KV gains, thermal behavior, and dispatch overhead.
