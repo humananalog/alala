@@ -50,3 +50,21 @@ Each dimension is scored on a 0–1 scale and combined with weights that can evo
   "notes": "Fused int4 KV test"
 }
 ```
+
+## 4. Gating Rules
+
+| Decision | IPJ Requirement | HCA Requirement |
+|----------|-----------------|-----------------|
+| Accept self-improvement change | Marginal IPJ > 0 | HCA impact ≥ 0 |
+| Keep change long-term | Sustained IPJ improvement | No degradation |
+| Rollback | Significant IPJ regression | HCA degradation |
+
+## 5. Reporting
+
+Every week, a summary report must be generated showing:
+- Average IPJ across representative workloads
+- ANE utilization trends
+- Thermal and power behavior
+- Any self-improvement cycles attempted and their IPJ/HCA outcomes
+
+This protocol makes IPJ a first-class, auditable metric rather than a vague aspiration.

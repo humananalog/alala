@@ -6,7 +6,36 @@
 ## Objectives
 
 1. Establish reliable baselines for IPJ, ANE utilization, thermal behavior, and SRAM limits.
-2. Quantify the Approximate context length where throughput drops ~25–30%
+2. Quantify the gains (or lack thereof) from fused low-precision KV cache.
+3. Identify the practical SRAM cliff on real workloads.
+4. Measure dispatch and orchestration overhead.
+
+## Benchmark 1: Thermal & Power Baseline
+
+**Goal**: Understand idle vs sustained load power and thermal rise curve.
+
+**Method**:
+- Idle for 10+ minutes
+- Run sustained decode workload for 5–10 minutes
+- Log power (CPU/GPU/ANE) and temperature every second
+
+**Key Metrics**:
+- Idle power
+- Sustained load power
+- Time to thermal steady state
+- Peak temperature under load
+
+## Benchmark 2: ANE SRAM Cliff Characterization
+
+**Goal**: Find the context length where performance drops due to SRAM limits.
+
+**Method**:
+- Run decode workloads with increasing context lengths (512 → 8192+)
+- Keep batch size = 1 and model fixed
+- Measure tokens/second and energy per token
+
+**Key Output**:
+- Approximate context length where throughput drops ~25–30%
 
 ## Benchmark 3: Fused int4 KV vs FP16 Comparison
 
@@ -51,3 +80,7 @@ All benchmarks must produce structured JSONL logs with at minimum:
 ## Success Gate for Phase 0
 
 By the end of Phase 0 we must have:
+- Reliable thermal/power baseline
+- Identified approximate SRAM cliff
+- Quantified benefit (or lack of benefit) from fused low-precision KV
+- Clear understanding of current orchestration overhead
