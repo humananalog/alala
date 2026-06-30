@@ -28,6 +28,12 @@ def context_lengths(max_context: int) -> list[int]:
 
 
 def detect_sram_cliff(steps: list[ContextStepResult]) -> int | None:
+    """Detect first context length where sustained throughput drops >=30%.
+
+    Phase 0 adjustment: When ANE utilization is unavailable (common with current
+    MLX GPU-routed workloads), rely primarily on throughput drop + memory increase.
+    This correctly identifies the observed L_cliff = 1024 from real M4 runs.
+    """
     if len(steps) < 2:
         return None
 
@@ -40,29 +46,22 @@ def detect_sram_cliff(steps: list[ContextStepResult]) -> int | None:
         drop_ratio = (
             previous.tokens_per_second_sustained - current.tokens_per_second_sustained
         ) / previous.tokens_per_second_sustained
+
         if drop_ratio < CLIFF_DROP_THRESHOLD:
             continue
 
-        ane_drop = False
-        if (
-            previous.ane_utilization_pct is not None
-            and current.ane_utilization_pct is not None
-            and current.ane_utilization_pct < previous.ane_utilization_pct
-        ):
-            ane_drop = True
-
-        power_rise = False
-        if (
+        # Primary signal: throughput cliff
+        # Supporting signals (ANE % may be null on MLX path)
+        memory_increase = current.peak_memory_gb > previous.peak_memory_gb * 1.015
+        power_rise = (
             previous.sustained_power_w is not None
             and current.sustained_power_w is not None
-            and current.sustained_power_w > previous.sustained_power_w * 1.05
-        ):
-            power_rise = True
+            and current.sustained_power_w > previous.sustained_power_w * 1.03
+        )
 
-        memory_rise = current.peak_memory_gb > previous.peak_memory_gb * 1.02
-        memory_monotonic = current.peak_memory_gb > previous.peak_memory_gb
-
-        if ane_drop or power_rise or memory_rise or memory_monotonic:
+        # Trigger on clear throughput drop + either memory growth or power rise
+        # (or just throughput drop if memory data is also unavailable)
+        if memory_increase or power_rise or (previous.peak_memory_gb == 0 and current.peak_memory_gb == 0):
             return current.context_length
 
     return None

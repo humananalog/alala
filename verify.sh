@@ -44,6 +44,7 @@ required_docs=(
   "IPJ_Measurement_Protocol_Alalā.md"
   "Phase0_AI_Coder_Task_List.md"
   "Phase0_Microbenchmark_Suite_Plan.md"
+  "Phase0_Results_Summary_Alalā.md"
   "Phase0_Week1_2_Task_Breakdown.md"
   "Risk_Register.md"
   "Revised_Phase0_2_Systems_Plan_Alalā.md"

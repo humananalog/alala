@@ -5,7 +5,8 @@
 
 ## Current Phase
 
-**Phase 0 – ANE Characterization & Measurement Infrastructure** — **COMPLETE** (2026-06-30)
+**Phase 0 – ANE Characterization & Measurement Infrastructure** — **COMPLETE** (2026-06-30)  
+**Canonical synthesis**: `Phase0_Results_Summary_Alalā.md` (2026-07-01)
 
 **Prior label**: ANE Characterization & Measurement Infrastructure  
 **Started**: 2026-06-30  
@@ -78,6 +79,8 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 5. **R04** 24 GB working-set pressure
 
 ## Recent Decisions
+- 2026-07-01: SRAM cliff detector updated for MLX GPU path (throughput + memory/power signals; ANE % optional).
+- 2026-07-01: Phase 0 canonical results summary published (`Phase0_Results_Summary_Alalā.md`).
 - 2026-06-30: Thermal headroom and sustained IPJ take precedence over peak throughput.
 - 2026-06-30: No IPJ claim without raw powermetrics + thermal artifacts.
 - 2026-06-30: ANE-first routing is default; measure CPU orchestration before minimizing.
@@ -157,9 +160,16 @@ All five success criteria have **measured M4 numbers** with powermetrics artifac
 
 None for Phase 0 completion.
 
+## Phase 1 Entry Criteria (Recommended)
+
+- SRAM cliff detector fix — **done** (2026-07-01).
+- Measurable ANE utilization **> 60%** on a small seeding model (350M–1B class via CoreML or ANE-friendly MLX).
+- Safe operating region: context ≤ 1024 (or paged KV) + thermal duty cycle.
+- First bounded self-improvement micro-scaffold with IPJ gating.
+
 ## Next Milestone
 
-**Phase 1 planning** — ANE-first routing validation, compiler pass prototyping per `Revised_Phase0_2_Systems_Plan_Alalā.md`.
+**Phase 1** — ANE-first routing validation, compiler pass prototyping per `Revised_Phase0_2_Systems_Plan_Alalā.md`. Gate on entry criteria above.
 
 ## Human Review Flags
 _See table above (post-audit)._
