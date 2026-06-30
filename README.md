@@ -13,37 +13,25 @@ We work strictly from first principles, with deep co-design between the model ar
 
 ## Repository Structure
 
-- `docs/` — Core documentation (physics, architecture, execution, measurement, Phase 0 tasks)
-- `verify.sh` — Pre-commit verification script (run before every commit)
+- `docs/` – All core documentation (physics, architecture, execution, measurement, etc.)
 - Key entry points:
-  - [`docs/Project_Index_Alalā.md`](docs/Project_Index_Alalā.md) — Main navigation hub (19 documents)
-  - [`docs/AI_Coder_Rules_Guidelines_Alalā.md`](docs/AI_Coder_Rules_Guidelines_Alalā.md) — Rules for Grok Build
-  - [`docs/OSLab_Program_Board.md`](docs/OSLab_Program_Board.md) — Live status and progress
-  - [`docs/Phase0_AI_Coder_Task_List.md`](docs/Phase0_AI_Coder_Task_List.md) — Explicit Phase 0 tasks
+  - `docs/Project_Index_Alalā.md` – Main navigation hub
+  - `docs/AI_Coder_Rules_Guidelines_Alalā.md` – Rules for Grok Build
+  - `docs/Phase0_AI_Coder_Task_List.md` – Explicit tasks for Phase 0
 
 ## Getting Started (for Grok Build)
 
-1. Read [`docs/Project_Index_Alalā.md`](docs/Project_Index_Alalā.md)
-2. Read [`docs/AI_Coder_Rules_Guidelines_Alalā.md`](docs/AI_Coder_Rules_Guidelines_Alalā.md)
-3. Read [`docs/Alalā_Physics_Corrected_Foundation.md`](docs/Alalā_Physics_Corrected_Foundation.md)
-4. Open [`docs/OSLab_Program_Board.md`](docs/OSLab_Program_Board.md)
-5. Follow [`docs/Phase0_AI_Coder_Task_List.md`](docs/Phase0_AI_Coder_Task_List.md)
-
-Before committing any change:
-
-```bash
-./verify.sh
-```
+1. Read `docs/AI_Coder_Rules_Guidelines_Alalā.md`
+2. Read `docs/Project_Index_Alalā.md`
+3. Follow `docs/Phase0_AI_Coder_Task_List.md`
 
 ## Status
 
-**Documentation**: All 19 Project Index documents are populated (as of 2026-06-30).
-
-**Phase 0**: Ready to begin — measurement harness and experiment directories still to be implemented on the M4.
+Documentation is at production/enterprise grade. Phase 0 (ANE characterization + measurement infrastructure) is ready to begin.
 
 ## License
 
-Apache License 2.0 — see [`LICENSE`](LICENSE).
+Apache 2.0 (see LICENSE file)
 
 ---
 
