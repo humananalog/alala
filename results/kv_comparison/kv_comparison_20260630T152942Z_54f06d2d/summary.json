@@ -1,0 +1,17 @@
+{
+  "context_length": 512,
+  "energy_dequant_joules": 5.546,
+  "experiment_id": "kv_comparison_20260630T152942Z_54f06d2d_summary",
+  "fp16_ipj": 0.541912,
+  "fp16_tokens_per_second_sustained": 9.633,
+  "hardware": "Apple M4",
+  "int4_ipj": 0.539099,
+  "int4_tokens_per_second_sustained": 9.867,
+  "ipj_delta": -0.002813,
+  "model": "baseline",
+  "notes": "FP16 vs fused int4 KV at context below L_cliff.",
+  "powermetrics_log_path": null,
+  "run_id": "kv_comparison_20260630T152942Z_54f06d2d",
+  "task_type": "kv_comparison_summary",
+  "timestamp": "2026-06-30T15:34:02Z"
+}

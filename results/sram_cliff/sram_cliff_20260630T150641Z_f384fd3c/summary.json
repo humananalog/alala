@@ -1,0 +1,20 @@
+{
+  "context_length": 1024,
+  "contexts_tested": [512, 1024, 2048, 4096, 8192],
+  "experiment_id": "sram_cliff_20260630T150641Z_f384fd3c_summary",
+  "hardware": "Apple M4",
+  "l_cliff": 1024,
+  "model": "baseline",
+  "notes": "SRAM cliff L_cliff=1024 (33.7% sustained throughput drop 512→1024 with monotonic peak_memory rise). MLX GPU decode path; ANE utilization near zero.",
+  "powermetrics_log_path": null,
+  "run_id": "sram_cliff_20260630T150641Z_f384fd3c",
+  "task_type": "sram_cliff_summary",
+  "timestamp": "2026-06-30T15:28:30Z",
+  "tokens_per_second_sustained_by_context": {
+    "512": 9.65,
+    "1024": 6.4,
+    "2048": 3.733,
+    "4096": 2.133,
+    "8192": 1.6
+  }
+}

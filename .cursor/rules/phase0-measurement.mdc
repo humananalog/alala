@@ -18,7 +18,7 @@ Read:
 ## Logging
 - All experiments output structured JSONL to `logs/` (see IPJ protocol schema).
 - Include: timestamp, experiment_id, key metrics, temperature, power, notes.
-- Never commit large log files — `logs/` contents are gitignored.
+- Commit `logs/` and `results/` Phase 0 artifacts (powermetrics + JSONL) with benchmark runs.
 
 ## Harness requirements (`harness/m4_energy_harness.py`)
 - Support modes: `thermal_baseline`, `sram_cliff`, `kv_comparison`

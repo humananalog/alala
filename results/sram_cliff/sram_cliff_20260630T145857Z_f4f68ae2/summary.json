@@ -1,0 +1,18 @@
+{
+  "context_length": null,
+  "contexts_tested": [
+    512
+  ],
+  "experiment_id": "sram_cliff_20260630T145857Z_f4f68ae2_summary",
+  "hardware": "Apple M4",
+  "l_cliff": null,
+  "model": "baseline",
+  "notes": "No SRAM cliff detected within tested context lengths.",
+  "powermetrics_log_path": null,
+  "run_id": "sram_cliff_20260630T145857Z_f4f68ae2",
+  "task_type": "sram_cliff_summary",
+  "timestamp": "2026-06-30T15:00:51Z",
+  "tokens_per_second_sustained_by_context": {
+    "512": 9.75
+  }
+}

@@ -2,11 +2,7 @@
 .env
 .env.*
 
-# Experiment outputs
-logs/*
-!logs/.gitkeep
-results/*
-!results/.gitkeep
+# Experiment outputs (logs/ and results/ are tracked — Phase 0 measurement artifacts)
 checkpoints/*
 !checkpoints/.gitkeep
 

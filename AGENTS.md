@@ -24,8 +24,8 @@ alala/
 ├── docs/                  # Authoritative documentation (19 indexed docs)
 ├── harness/               # Measurement harness (Phase 0)
 ├── experiments/           # Experiment scripts and configs
-├── logs/                  # JSONL experiment logs (gitignored contents)
-├── results/               # Benchmark outputs (gitignored contents)
+├── logs/                  # JSONL + powermetrics experiment logs (tracked)
+├── results/               # Benchmark outputs per run (tracked)
 ├── checkpoints/           # Rollback checkpoints (gitignored contents)
 ├── verify.sh              # Pre-commit verification — run before every commit
 └── VERSION                # Repo version
@@ -84,6 +84,7 @@ python harness/m4_energy_harness.py --help
 - Use `@docs/Project_Index_Alalā.md` to pull navigation context into chat.
 - Invoke `@verifier` subagent after completing multi-step tasks.
 - Do not read or commit secrets; `.env*` is ignored.
+- Commit Phase 0 `logs/` and `results/` artifacts (powermetrics + JSONL) with harness changes.
 
 ## Target Platform
 
