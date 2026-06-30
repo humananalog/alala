@@ -34,7 +34,7 @@
 ### Day 8–10: Fused int4 KV vs FP16 Comparison
 - Implement or integrate fused low-precision KV path
 - Run controlled comparison at fixed context length (e.g. 2048)
-- Measure tokens/s, energy per token, and rough IPJ
+- Measure sustained tokens/s, energy per token, and IPJ\(_{phase0}\) with powermetrics logs
 
 **Acceptance Criteria**: Quantified difference between the two paths documented.
 

@@ -30,7 +30,7 @@ This document contains explicit, numbered tasks for Phase 0. Complete them in or
 **Task W1-03: ANE SRAM Cliff Characterization**
 1. Prepare workloads with increasing context lengths (start small, go up to where performance drops).
 2. Run the SRAM cliff experiment using the harness.
-3. Identify the approximate context length where throughput drops ~30%.
+3. Identify \( L_{\text{cliff}} \): context length where sustained throughput drops ≥30% (per IPJ protocol §2.2).
 4. Document results clearly with graphs if possible.
 5. Update the Program Board.
 
@@ -40,7 +40,7 @@ This document contains explicit, numbered tasks for Phase 0. Complete them in or
 1. Implement or use existing short decode workload in the harness.
 2. Run comparison between FP16 and fused int4 KV path.
 3. Measure energy and tokens/second.
-4. Calculate rough IPJ difference.
+4. Calculate IPJ\(_{phase0}\) delta per `IPJ_Measurement_Protocol_Alalā.md` §2.1 (with powermetrics artifacts).
 5. Log results and update Program Board.
 
 **Success Criteria**: Quantified IPJ difference between the two paths documented.

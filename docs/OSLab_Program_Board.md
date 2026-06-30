@@ -5,13 +5,17 @@
 
 ## Current Phase
 
-**Phase 0 – Pre-hardware-measurement** (docs audit complete, harness implementation next)
+**Phase 0 – Pre-hardware-measurement** (docs audit **complete**, harness implementation next)
 
 **Prior label**: ANE Characterization & Measurement Infrastructure  
 **Started**: 2026-06-30  
 **Target**: Harness implementation on physical Mac Mini M4 24 GB, then Week 1–2 measurements
 
-**Readiness**: Documentation audit Tasks 1–3 complete. `harness/m4_energy_harness.py` not yet implemented — **blocker for hardware runs**.
+**Readiness (2026-06-30)**:
+- Documentation audit Tasks 1–5 **complete**
+- `./verify.sh` passing
+- `harness/m4_energy_harness.py` **not implemented** — blocker for physical M4 runs
+- Next action: implement harness per `IPJ_Measurement_Protocol_Alalā.md` §2.3
 
 ## Phase 0 Success Criteria (Measurable M4 Numbers)
 
@@ -42,15 +46,23 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 - Phase 0 success criteria table (above)
 - `Risk_Register.md`: Phase 0 risks R02–R06 (SRAM cliff, thermal, 24 GB pressure, orchestration, dequant)
 
-### Task 4 — Cross-consistency (pending commit)
+### Task 4 — Cross-consistency
 - `Project_Index_Alalā.md`: full 19-doc navigation hub, operational IPJ, harness modes
-- Terminology alignment: unified-memory spills (not generic DRAM), ≥30% SRAM cliff, execution constraint on planning docs
+- Terminology alignment: unified-memory spills, ≥30% SRAM cliff, execution constraint on planning docs
 
-### Task 5 — Execution guidance (pending commit)
+### Task 5 — Execution guidance
 - `OSLab_Execution_Playbook.md` v2.1: physical M4 only, powermetrics required, thermal safety, ANE-first
 
+## Human Review Flags (post-audit)
+| Doc | Flag | Reason |
+|-----|------|--------|
+| `Compiler_Passes_Skeleton_Alalā.md` | Expected Benefit numbers unmeasured | Pass benefits are hypotheses until Phase 1 M4 IPJ validation |
+| `Alalā_Improvement_Playbook.md` | Marginal IPJ not cross-linked to §2.1 | Self-improvement gating should cite operational IPJ after Phase 0 |
+| `Meta_Controller_Skeleton_Alalā.md` | Threshold constants unspecified | Controller thresholds should be set from Phase 0 measured baselines |
+| Phase 0 success criteria | Sustained ANE utilization % TBD | Target % intentionally deferred until thermal baseline on hardware |
+
 ## Active Tasks (as of today)
-- W1-00: Docs audit (Tasks 1–3) — **Complete**
+- W1-00: Docs audit (Tasks 1–5) — **Complete**
 - W1-01: Implement `harness/m4_energy_harness.py` — **Next**
 - W1-02: Thermal Baseline on physical M4 — Blocked on harness
 - W1-03: ANE SRAM Cliff Characterization — Blocked on harness
@@ -75,7 +87,7 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 Implement harness per IPJ protocol §2.3; run thermal baseline on physical Mac Mini M4 24 GB.
 
 ## Human Review Flags
-_None yet — re-check after Tasks 4–5 cross-consistency pass._
+_See table above (post-audit)._
 
 ## Notes
 This board must be updated by Grok Build after every significant task or discovery.

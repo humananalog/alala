@@ -1,7 +1,9 @@
 # Compiler Passes Skeleton — Alalā
 
-**Version**: 1.0  
-**Goal**: Define the first high-impact compiler passes that maximize ANE utilization and minimize data movement on M4.
+**Version**: 1.1  
+**Goal**: Define the first high-impact compiler passes that maximize ANE utilization and minimize unified-memory data movement on Mac Mini M4 24 GB.
+
+**Note**: All "Expected Benefit" claims require Phase 0+ measured IPJ on physical M4 before production use.
 
 ## Design Principles
 
