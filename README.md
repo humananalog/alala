@@ -35,6 +35,11 @@ We work strictly from first principles, with deep co-design between the model ar
 
 Documentation is at production/enterprise grade. Phase 0 (ANE characterization + measurement infrastructure) is ready to begin.
 
+## Author
+
+- **Human Analog Ltd**
+- **Lucius Stel**
+
 ## License
 
 Apache 2.0 (see LICENSE file)
