@@ -1,6 +1,6 @@
 # IPJ Measurement Protocol — Alalā
 
-**Version**: 1.2  
+**Version**: 1.3  
 **Purpose**: Define how Intelligence per Joule (IPJ) is measured, logged, and used as a gating criterion on **Mac Mini M4 24 GB** physical hardware.
 
 **Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
@@ -78,12 +78,49 @@ The protocol maps directly to harness modes (see `How_to_Run_First_Micro_Benchma
 | `sram_cliff` | 2 | tokens × q per context step | per-step powermetrics + cliff detection |
 | `kv_comparison` | 3 | tokens × q; FP16 vs int4 delta | `energy_dequant_joules` delta |
 | `orchestration` | 4 | tokens × q or op count | `energy_cpu_orchestration_joules` |
+| `ane_utilization` | E1 | forward passes × q | `ane_compute_fraction_pct`, orchestration tax |
+| `thermal_ipj_curve` | E2 | tokens × q per time window | IPJ vs. thermal headroom time series |
+| `meta_tax` | E3 | net useful work delta | `energy_meta_total_joules`, `net_ipj_delta` |
+| `memory_spill` | E4 | tokens × q per context tier | spill vs. recompute joules/token |
 
 Harness responsibilities (implementation spec):
 - Spawn `powermetrics` subprocess; write raw log to `logs/<experiment_id>.powermetrics.txt`
 - Emit one JSONL summary line per run to `logs/<experiment_id>.jsonl`
 - Abort if package temperature exceeds configurable safe sustained threshold (default: human-set on first thermal baseline)
 - Never run on non-M4 hosts (detect Apple Silicon + 24 GB)
+
+### 2.4 Gap-Closing Experiments (E1–E4) — IPJ Requirements
+
+These extend Phase 0 Week 1 tasks (`Phase0_AI_Coder_Task_List.md` § Phase 0 Extended). All run on **physical Mac Mini M4 24 GB**; stop if temperature exceeds safe sustained threshold.
+
+#### E1 – ANE Real Utilization Baseline
+- **First-class IPJ components**: `ane_compute_fraction_pct` (% forward-pass wall time on ANE), `ane_utilization_pct`, `energy_cpu_orchestration_joules`, `orchestration_tax_pct` (= orchestration joules / total joules).
+- IPJ\(_{phase0}\) for E1 uses tokens or forward-pass count as numerator; denominator must separate ANE vs. orchestration joules.
+- **Gate**: publish `ane_compute_fraction_pct` alongside every IPJ claim for ANE-first workloads.
+
+#### E2 – Sustained Thermal + IPJ Degradation Curve
+- **Thermal headroom is an explicit independent variable**: log `thermal_headroom_c` (margin to safe sustained threshold) per time window.
+- IPJ is **only valid within the measured safe sustained envelope** — annotate each JSONL row with `thermal_envelope_valid: true|false`.
+- Required series: `ipj` vs. elapsed minutes; flag `ipj_degradation_pct` from first steady-state window to post-throttle window.
+- **Gate**: do not compare IPJ across runs unless thermal headroom conditions are stated and comparable.
+
+#### E3 – Closed-Loop Meta-Tax Measurement
+- **Full meta-overhead accounting** required in denominator:
+  - `energy_meta_propose_joules`, `energy_meta_evaluate_joules`, `energy_meta_apply_joules`
+  - `energy_meta_total_joules` = sum of above
+  - `energy_saved_subsequent_joules` = baseline joules − post-change joules over amortization window
+  - `net_ipj_delta` = (Δ useful work / Δ joules) accounting for meta total
+- **Gate**: self-improvement cadence blocked until `net_ipj_delta` > 0 at sustained thermal conditions.
+
+#### E4 – Memory Pressure & Spill Cost
+- Log `working_set_mb`, `context_length`, unified-memory bandwidth utilization proxy (if available).
+- **Spill vs. recompute**: `energy_spill_joules_per_token`, `energy_recompute_joules_per_token`, `spill_vs_recompute_delta`.
+- Attribute spill energy to data movement component in §3.3 when ANE on-chip SRAM (~28–30 MB) is exceeded.
+- **Gate**: hierarchical memory design changes require E4 numbers before adoption.
+
+### 2.5 Lab Principle (Non-Negotiable)
+
+**No IPJ claim is accepted without raw `powermetrics` + thermal logs and a clear statement of thermal headroom conditions** (`temp_start_c`, `temp_steady_state_c`, `thermal_headroom_c`, safe sustained threshold used, `thermal_envelope_valid`).
 
 ## 3. Measurement Infrastructure (M4)
 
@@ -137,11 +174,15 @@ IPJ denominators must be decomposable where possible:
   "ipj": 0.021,
   "hca_impact": 0.05,
   "notes": "Fused int4 KV test",
-  "powermetrics_log_path": "logs/phase0_sram_cliff_001.powermetrics.txt"
+  "powermetrics_log_path": "logs/phase0_sram_cliff_001.powermetrics.txt",
+  "thermal_headroom_c": 8.4,
+  "thermal_envelope_valid": true,
+  "ane_compute_fraction_pct": 74.2,
+  "orchestration_tax_pct": 18.5
 }
 ```
 
-**Rule**: No IPJ claim is valid without raw `powermetrics` logs + thermal data attached to the result (file path or inline archive).
+**Rule**: No IPJ claim is valid without raw `powermetrics` logs + thermal data attached to the result (file path or inline archive) **and** stated thermal headroom conditions (§2.5).
 
 ## 4. Gating Rules
 

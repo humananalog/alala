@@ -70,7 +70,7 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 | E3 – Closed-Loop Meta-Tax Measurement | Defined – awaiting harness implementation | E1, E2 pass |
 | E4 – Memory Pressure & Spill Cost | Defined – awaiting harness implementation | W1-01 harness + W1-03 |
 
-Specs: `Phase0_AI_Coder_Task_List.md` § Phase 0 Extended.
+Specs: `Phase0_AI_Coder_Task_List.md` § Phase 0 Extended. IPJ requirements: `IPJ_Measurement_Protocol_Alalā.md` §2.4–§2.5.
 
 ## Active Tasks (as of today)
 - W1-00: Docs audit (Tasks 1–5) — **Complete**
