@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>elapsed_ns</key><integer>1000000000</integer>
+  <key>timestamp</key><date>2026-06-30T12:00:00Z</date>
+  <key>thermal_pressure</key><string>Nominal</string>
+  <key>processor</key>
+  <dict>
+    <key>cpu_energy</key><integer>120</integer>
+    <key>gpu_energy</key><integer>45</integer>
+    <key>ane_energy</key><integer>10</integer>
+    <key>combined_power</key><real>5500.5</real>
+    <key>clusters</key><array></array>
+  </dict>
+  <key>gpu</key>
+  <dict>
+    <key>freq_hz</key><real>900000000</real>
+    <key>idle_ratio</key><real>0.75</real>
+  </dict>
+  <key>smc</key>
+  <dict>
+    <key>sensors</key>
+    <array>
+      <dict>
+        <key>name</key><string>CPU die temperature</string>
+        <key>value</key><real>52.5</real>
+      </dict>
+    </array>
+  </dict>
+</dict>
+</plist>

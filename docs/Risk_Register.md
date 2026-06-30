@@ -18,11 +18,11 @@
 | ID | Risk | Likelihood | Impact | Owner | Mitigation / Notes | Status |
 |----|------|------------|--------|-------|--------------------|--------|
 | R01 | Noisy or unreliable `powermetrics` data | Medium | High | Grok Build | Multiple trials; attach raw logs to every result; cross-validate with external meter on calibration runs | Open |
-| R02 | Thermal throttling under sustained ANE+CPU load | High | High | Grok Build | Thermal baseline first; log start/steady-state temp and time-to-throttle; stop if over safe sustained threshold; modulate batch/precision | Open |
-| R03 | SRAM cliff impact on long-context decode | High | High | Grok Build | Benchmark 2: measure \( L_{\text{cliff}} \) (≥30% sustained throughput drop); redesign KV tiling/int4 if marginal IPJ negative past cliff | Open |
+| R02 | Thermal throttling under sustained ANE+CPU load | High | High | Grok Build | **Measured** thermal baseline + decode sweeps; decode threshold **88°C**, 180 s inter-step cooldown | Mitigated (measured) |
+| R03 | SRAM cliff impact on long-context decode | High | High | Grok Build | **Measured** \( L_{\text{cliff}}=1024 \) on Qwen2.5-7B-4bit MLX path (2026-06-30); throughput −33.7% at 1024 vs 512 | Mitigated (measured) |
 | R04 | 24 GB working-set pressure (KV + activations + harness) | Medium | High | Grok Build | Budget unified memory explicitly; measure harness overhead; avoid loading full FP16 KV at long context | Open |
-| R05 | ANE utilization gaps due to orchestration | High | High | Grok Build | ANE-first default; Benchmark 4 measures `energy_cpu_orchestration_joules`; minimize only after measure | Open |
-| R06 | Dequantization energy eroding theoretical int4 gains | Medium | High | Grok Build | Benchmark 3: log `energy_dequant_joules` vs FP16; reject config if IPJ delta ≤ 0 | Open |
+| R05 | ANE utilization gaps due to orchestration | High | High | Grok Build | **Measured** CPU orch ~4.3% of joules (tight loop); ANE util ~0% on MLX GPU — orchestration not dominant, ANE routing is | Open (ANE routing) |
+| R06 | Dequantization energy eroding theoretical int4 gains | Medium | High | Grok Build | **Confirmed** at ctx 512: ΔIPJ −0.0028, `energy_dequant_joules` +5.5 J; reject int4 KV for this path | Mitigated (measured) |
 | R07 | Grok Build underestimates low-level optimization difficulty | High | High | Human | Small gated tasks; frequent review in Phase 0 | Open |
 | R08 | Documentation and code drift | Medium | Medium | Grok Build | Update docs after code changes; run `./verify.sh` before commit | Open |
 | R09 | Over-optimism on ANE utilization gains | High | High | Team | Ground all claims in Phase 0 measured M4 numbers with powermetrics artifacts | Open |

@@ -21,10 +21,13 @@ Each mode must emit raw `powermetrics` log + JSONL per `IPJ_Measurement_Protocol
 - `docs/Phase0_Microbenchmark_Suite_Plan.md`
 - `docs/IPJ_Measurement_Protocol_Alalā.md`
 
-## Usage (when implemented)
+## Usage
 
 ```bash
-python harness/m4_energy_harness.py --mode thermal_baseline --duration 120
+python harness/m4_energy_harness.py --mode thermal_baseline --duration 600 --idle-seconds 60
+python harness/m4_energy_harness.py --mode sram_cliff --model baseline --max-context 8192
 ```
+
+Requires `SUDO_PASSWORD` in repo `.env` (or run with sudo). Optional `MLX_PYTHON` in `.env` if `mlx_lm` is not on the default interpreter.
 
 Logs go to `logs/`; results to `results/`.
