@@ -79,11 +79,11 @@ Specs: `Phase0_AI_Coder_Task_List.md` § Phase 0 Extended. IPJ requirements: `IP
 - W1-03: ANE SRAM Cliff Characterization — Blocked on harness
 
 ## Key Risks (Top 5 — see `Risk_Register.md`)
-1. **R02** Thermal throttling under sustained ANE+CPU load
-2. **R03** SRAM cliff impact on long-context decode
-3. **R05** ANE utilization gaps due to orchestration
-4. **R06** Dequantization energy eroding int4 gains
-5. **R04** 24 GB working-set pressure
+1. **R-ANE-01** Low real ANE coverage → orchestration tax (mitigation: E1)
+2. **R-THERM-02** Thermal throttling erodes sustained IPJ (mitigation: E2)
+3. **R-META-03** Meta-tax exceeds marginal gains (mitigation: E3)
+4. **R-MEM-04** Expensive SRAM spills / 24 GB pressure (mitigation: E4)
+5. **R03** SRAM cliff impact on long-context decode
 
 ## Recent Decisions
 - 2026-06-30: Thermal headroom and sustained IPJ take precedence over peak throughput.
