@@ -100,6 +100,15 @@ sudo python harness/m4_energy_harness.py --mode orchestration --iterations 100
 | Harness crashes | Missing deps or not on M4 | `pip install numpy`; verify Apple Silicon 24 GB |
 | IPJ without powermetrics file | Incomplete logging | Re-run; attach `powermetrics_log_path` |
 
+## Validate Artifacts (required before IPJ claims)
+
+```bash
+python harness/validate_artifact.py logs/<experiment_id>.jsonl
+python harness/validate_artifact.py --require-m4 logs/<experiment_id>.jsonl
+```
+
+Update `results/measurement_status.json` with `m4_validated: true` and artifact path after each criterion closes.
+
 ## Success Criteria (Phase 0)
 
 Measurable M4 numbers (not estimates):

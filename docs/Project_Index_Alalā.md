@@ -2,7 +2,7 @@
 
 **Status**: Authoritative entry point (as of 2026-06-30)  
 **Repository**: https://github.com/humananalog/alala  
-**Current phase**: Phase 0 – Pre-hardware-measurement (docs audit complete; harness next)
+**Current phase**: Phase 0 – Harness ready; first physical M4 measurements pending
 
 **Execution Model**: Grok Build (local AI coding agent on the physical Mac Mini M4 24 GB) is the primary executor (~98%). All documentation is structured to be directly followable by an AI coder.
 
@@ -17,8 +17,8 @@ This document is the single source of truth for navigating the entire Alalā doc
 3. Read `Alalā_Physics_Corrected_Foundation.md` (M4 silicon realities, §0).
 4. Read `Alalā_Core_Invariant_Specification_HCA.md` (non-violable constraints).
 5. Open `OSLab_Program_Board.md` — note Phase 0 status, success criteria, blockers.
-6. Follow `Phase0_AI_Coder_Task_List.md` (implement harness, then M4 measurements).
-7. Use `IPJ_Measurement_Protocol_Alalā.md` §2.1 for operational IPJ; log all experiments; update Program Board.
+6. Follow `Phase0_AI_Coder_Task_List.md` — run `setup_check` then `thermal_baseline` on physical M4.
+7. Validate artifacts: `harness/validate_artifact.py`; track `results/measurement_status.json`.
 
 ## 2. Document Hierarchy (All 19 Docs)
 
@@ -27,9 +27,9 @@ This document is the single source of truth for navigating the entire Alalā doc
 |----------|---------|--------|
 | `Alalā_Physics_Corrected_Foundation.md` | M4 silicon realities (§0), ANE-first, thermal headroom, sustained IPJ > peak | Complete v2 |
 | `Alalā_Core_Invariant_Specification_HCA.md` | Human Cooperation Attractor — constitutional constraint | Complete |
-| `OSLab_Program_Board.md` | Live phase status, success criteria, audit log, blockers | Complete v1.1 |
+| `OSLab_Program_Board.md` | Live phase status, lab readiness scorecard | Complete v1.3 |
 | `OSLab_Execution_Playbook.md` | Day-to-day program execution on physical M4 | Complete |
-| `IPJ_Measurement_Protocol_Alalā.md` | Operational IPJ\(_{phase0}\), powermetrics + thermal artifacts required | Complete v1.2 |
+| `IPJ_Measurement_Protocol_Alalā.md` | Operational IPJ; §3.5 artifact validation | Complete v1.4 |
 
 ### Execution & Planning (6)
 | Document | Purpose | Status |
@@ -69,7 +69,8 @@ This document is the single source of truth for navigating the entire Alalā doc
 | **SRAM Budgeting** | `Hierarchical_Memory_Architecture_Alalā.md` | Active working sets < ~28–30 MB ANE on-chip SRAM; spill → unified memory |
 | **Thermal Headroom** | `Alalā_Physics_Corrected_Foundation.md` §2.3 | First-class variable; sustained IPJ > peak throughput |
 | **SRAM Cliff** | `IPJ_Measurement_Protocol_Alalā.md` §2.2 | Context length with ≥30% sustained throughput drop from on-chip SRAM exhaustion |
-| **Harness** | `harness/m4_energy_harness.py` + `How_to_Run_...` | Four modes: thermal_baseline, sram_cliff, kv_comparison, orchestration |
+| **Harness** | `harness/m4_energy_harness.py` | 9 modes + `validate_artifact.py` + `test_harness.py` |
+| **Measurement status** | `results/measurement_status.json` | Per-criterion M4 validation tracker |
 
 ## 4. How to Navigate
 

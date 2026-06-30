@@ -1,0 +1,55 @@
+{
+  "updated": null,
+  "platform": "Mac Mini M4 24 GB",
+  "validation_rule": "Set m4_validated true only after sudo harness run with real powermetrics logs",
+  "criteria": {
+    "thermal_baseline": {
+      "harness_mode": "thermal_baseline",
+      "infrastructure_ready": true,
+      "m4_validated": false,
+      "artifact_path": null
+    },
+    "sram_cliff": {
+      "harness_mode": "sram_cliff",
+      "infrastructure_ready": true,
+      "m4_validated": false,
+      "artifact_path": null
+    },
+    "kv_comparison": {
+      "harness_mode": "kv_comparison",
+      "infrastructure_ready": true,
+      "m4_validated": false,
+      "artifact_path": null
+    },
+    "orchestration_overhead": {
+      "harness_mode": "orchestration",
+      "infrastructure_ready": true,
+      "m4_validated": false,
+      "artifact_path": null
+    },
+    "e1_ane_utilization": {
+      "harness_mode": "ane_utilization",
+      "infrastructure_ready": true,
+      "m4_validated": false,
+      "artifact_path": null
+    },
+    "e2_thermal_ipj_curve": {
+      "harness_mode": "thermal_ipj_curve",
+      "infrastructure_ready": true,
+      "m4_validated": false,
+      "artifact_path": null
+    },
+    "e3_meta_tax": {
+      "harness_mode": "meta_tax",
+      "infrastructure_ready": true,
+      "m4_validated": false,
+      "artifact_path": null
+    },
+    "e4_memory_spill": {
+      "harness_mode": "memory_spill",
+      "infrastructure_ready": true,
+      "m4_validated": false,
+      "artifact_path": null
+    }
+  }
+}

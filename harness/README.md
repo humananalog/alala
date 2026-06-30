@@ -18,7 +18,10 @@ Measurement harness for Phase 0 M4 micro-benchmarks.
 - `meta_tax` — E3; meta-overhead joules + `net_ipj_delta`
 - `memory_spill` — E4; spill vs recompute joules/token
 
-Each mode must emit raw `powermetrics` log + JSONL per `IPJ_Measurement_Protocol_Alalā.md` §2.1–§2.5.
+Each mode must emit raw `powermetrics` log + JSONL per `IPJ_Measurement_Protocol_Alalā.md` §2.1–§3.5.
+
+Validate: `python harness/validate_artifact.py logs/<id>.jsonl`  
+Tests: `python harness/test_harness.py` (also run via `./verify.sh`)
 
 ## Docs
 

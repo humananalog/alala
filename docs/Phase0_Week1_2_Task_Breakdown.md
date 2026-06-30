@@ -53,7 +53,7 @@
 
 ## Phase 0 Extended – Gap-Closing Experiments (Decision Gates)
 
-Runs **after** corresponding Week 1 prerequisites on **physical Mac Mini M4 24 GB** only. Respect thermal limits — stop if temperature exceeds safe sustained threshold. See `Phase0_AI_Coder_Task_List.md` for full specs. Status: **Defined – awaiting harness implementation**.
+Runs **after** corresponding Week 1 prerequisites on **physical Mac Mini M4 24 GB** only. Respect thermal limits — stop if temperature exceeds safe sustained threshold. Status: **Harness ready — awaiting physical M4 runs**. See `Phase0_AI_Coder_Task_List.md` § Phase 0 Extended.
 
 | ID | When | Duration | Key output |
 |----|------|----------|------------|

@@ -54,7 +54,7 @@ This document contains explicit, numbered tasks for Phase 0. Complete them in or
 
 ### Phase 0 Extended – Gap-Closing Experiments (Decision Gates)
 
-Runs locally on **physical Mac Mini M4 24 GB** only (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold. Status: **Defined – awaiting harness implementation**.
+Runs locally on **physical Mac Mini M4 24 GB** only. Harness modes: `ane_utilization`, `thermal_ipj_curve`, `meta_tax`, `memory_spill`. Status: **Harness ready — awaiting physical M4 runs**.
 
 #### E1 – ANE Real Utilization Baseline
 
@@ -90,9 +90,29 @@ After the SRAM cliff test (W1-03), stress realistic working sets (model weights 
 
 ## Week 2 Tasks
 
-**Task W2-01 to W2-06**: (To be expanded based on Week 1 results and Program Board updates)
+**Task W2-01: Close E1 (ANE Utilization)**
+1. Run `sudo python harness/m4_energy_harness.py --mode ane_utilization --duration 300`
+2. Validate artifacts with `validate_artifact.py --require-m4`
+3. Record `ane_compute_fraction_pct`, `orchestration_tax_pct`; pass/fail per E1 gate
 
-You will receive updated tasks for Week 2 after completing and logging Week 1.
+**Task W2-02: Close E2 (Thermal + IPJ Curve)**
+1. Run `thermal_ipj_curve` for 30–60+ min with `--window-s 300`
+2. Document `ipj_degradation_pct_final` and safe sustained envelope
+
+**Task W2-03: Close E4 (Memory Spill)**
+1. After W1-03, run `memory_spill` at contexts above and below \( L_{\text{cliff}} \)
+2. Compare `energy_spill_joules_per_token` vs `energy_recompute_joules_per_token`
+
+**Task W2-04: Week 1 Integration Report**
+1. Update `measurement_status.json` with validated artifact paths
+2. Update Program Board and Risk Register with quantified R-GAP likelihood/impact
+
+**Task W2-05: E3 Meta-Tax (when meta machinery exists)**
+1. Run `meta_tax` mode; require `net_ipj_delta` > 0 before scaling improvement cadence
+
+**Task W2-06: Phase 0 Gate Review**
+1. Confirm all Week 1 criteria + applicable E-gates pass or have redesign plans
+2. Human sign-off before Phase 1 compiler work
 
 **Important Rules for Grok Build**:
 - Never skip logging.

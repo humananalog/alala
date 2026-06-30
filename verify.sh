@@ -109,9 +109,18 @@ for dir in harness experiments logs results checkpoints; do
   fi
 done
 
-# 9. Optional: warn if Phase 0 harness not yet present
-if [ ! -f harness/m4_energy_harness.py ]; then
+# 9. Harness smoke tests (dry-run)
+if [ -f harness/m4_energy_harness.py ]; then
+  if ! python3 harness/test_harness.py -q; then
+    fail "harness/test_harness.py smoke tests failed"
+  fi
+else
   warn "harness/m4_energy_harness.py not yet implemented (Phase 0 pending)"
+fi
+
+# 10. Measurement status tracker must exist
+if [ ! -f results/measurement_status.json ]; then
+  fail "results/measurement_status.json missing"
 fi
 
 echo "=== Summary ==="

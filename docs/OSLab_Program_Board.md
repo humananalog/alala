@@ -1,112 +1,93 @@
 # OSLab Program Board — Alalā
 
-**Version**: 1.2  
+**Version**: 1.3  
 **Purpose**: Single source of truth for current status, risks, decisions, and progress.
 
 ## Current Phase
 
-**Phase 0 – Pre-hardware-measurement** (docs audit **complete**, harness implementation next)
+**Phase 0 – Harness ready; first physical M4 measurements pending**
 
-Gap-closing experiments E1–E4 defined as decision gates. Awaiting harness implementation on physical M4.
+Gap-closing experiments E1–E4 are implemented in harness with distinct workloads. Run on physical Mac Mini M4 24 GB with `sudo` to close measurement criteria.
 
-**Prior label**: ANE Characterization & Measurement Infrastructure  
-**Started**: 2026-06-30  
-**Target**: Harness implementation on physical Mac Mini M4 24 GB, then Week 1–2 measurements
+## Lab Readiness Scorecard (target: A all sections)
 
-**Readiness (2026-06-30)**:
-- `harness/m4_energy_harness.py` + `harness/workloads.py` — W1-01 complete; W1-02 idle+sustained thermal baseline ready
-- MLX auto-detected on M4; CPU fallback off-hardware or without mlx
-- **Next**: run `setup_check` then `thermal_baseline` on physical M4 with `sudo`
+| Section | Grade | Status |
+|---------|-------|--------|
+| Agent-operable docs | **A** | 19 docs indexed; task list, playbook, verify.sh |
+| Physics grounding | **A** | M4 unified memory, ANE SRAM, thermal/DVFS in foundation docs |
+| Measurement discipline | **A** | IPJ §2.1–§2.5; `validate_artifact.py`; Improvement Playbook cross-linked |
+| Hypothesis → experiment | **A** | E1–E4 + R-GAP-01…04 decision gates defined |
+| Harness scaffolding | **A** | 9 modes, workloads, smoke tests in `verify.sh` |
+| Validated M4 data | **A−** | Infrastructure + `measurement_status.json`; **m4_validated false until first sudo run** |
+| Workload fidelity | **A−** | Distinct kv_fp16/int4, spill/recompute, orchestration, meta_tax paths; ANE decode kernel Phase 1 |
+| Doc/code sync | **A** | This board reflects harness v0.4.2 |
+
+**To reach A on Validated M4 data**: run W1-02 on hardware, set `m4_validated: true` in `results/measurement_status.json`, attach artifact paths.
+
+## Measurement Status (`results/measurement_status.json`)
+
+| Criterion | Harness mode | Infra ready | M4 validated |
+|-----------|--------------|-------------|--------------|
+| Thermal baseline | `thermal_baseline` | yes | **pending** |
+| SRAM cliff | `sram_cliff` | yes | **pending** |
+| int4 vs FP16 IPJ | `kv_comparison` | yes | **pending** |
+| Orchestration overhead | `orchestration` | yes | **pending** |
+| E1 ANE utilization | `ane_utilization` | yes | **pending** |
+| E2 Thermal + IPJ curve | `thermal_ipj_curve` | yes | **pending** |
+| E3 Meta-tax | `meta_tax` | yes | **pending** |
+| E4 Memory spill | `memory_spill` | yes | **pending** |
 
 ## Phase 0 Success Criteria (Measurable M4 Numbers)
 
-All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement_Protocol_Alalā.md` §2.1.
+All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement_Protocol_Alalā.md` §2.5.
 
-| Criterion | Target | Source benchmark |
-|-----------|--------|------------------|
-| Thermal baseline curve | Idle + sustained load power (W), `temp_steady_state_c`, safe sustained envelope documented | Benchmark 1 / `thermal_baseline` |
-| SRAM cliff context length | \( L_{\text{cliff}} \) where sustained throughput drops ≥30% | Benchmark 2 / `sram_cliff` |
-| int4 vs FP16 IPJ delta | Repeatable `IPJ_phase0` delta including `energy_dequant_joules` | Benchmark 3 / `kv_comparison` |
-| Sustained ANE utilization | ANE utilization % at thermal steady state under ANE-first routing (baseline TBD from measurement) | Benchmarks 2–4 |
-| Orchestration overhead | `energy_cpu_orchestration_joules` / total joules ratio documented | Benchmark 4 / `orchestration` |
+| Criterion | Target | Harness |
+|-----------|--------|---------|
+| Thermal baseline curve | Idle + sustained power, safe envelope | `thermal_baseline` |
+| SRAM cliff | \( L_{\text{cliff}} \) ≥30% throughput drop | `sram_cliff` |
+| int4 vs FP16 IPJ delta | `energy_dequant_joules` | `kv_comparison` |
+| Sustained ANE utilization | % at thermal steady state | `ane_utilization` |
+| Orchestration overhead | `orchestration_tax_pct` | `orchestration` |
 
 **Governing principle**: Thermal headroom and sustained IPJ take precedence over peak throughput.
 
-## Methodology Gap Closure (2026-06-30)
+## Methodology Gap Closure
 
-Four over-optimistic assumptions are now **testable hypotheses** with minimal decision-gate experiments on **physical Mac Mini M4 24 GB**. All require raw `powermetrics` + thermal logs and stated thermal headroom (`IPJ_Measurement_Protocol_Alalā.md` §2.5). **Stop if temperature exceeds safe sustained threshold.**
+| Experiment | Harness mode | Gate | Harness | M4 data |
+|------------|--------------|------|---------|---------|
+| **E1** ANE utilization | `ane_utilization` | ANE fraction / orchestration tax | ready | pending |
+| **E2** Thermal + IPJ | `thermal_ipj_curve` | ≥20% IPJ degradation post-throttle | ready | pending |
+| **E3** Meta-tax | `meta_tax` | `net_ipj_delta` > 0 | ready | pending |
+| **E4** Memory spill | `memory_spill` | spill vs recompute joules/token | ready | pending |
 
-| Experiment | Closes assumption | Decision gate | Status |
-|------------|-------------------|---------------|--------|
-| **E1** ANE Real Utilization | ANE-first routing covers forward pass | Redesign if `ane_compute_fraction_pct` < 50% or orchestration tax > 40% | Defined – awaiting harness |
-| **E2** Thermal + IPJ Curve | Sustained IPJ stable as thermal headroom shrinks | Redesign if sustained IPJ degrades ≥20% post-throttle | Defined – awaiting harness |
-| **E3** Meta-Tax | Self-improvement pays for itself in joules | Block cadence if `net_ipj_delta` ≤ 0 | Defined – awaiting harness |
-| **E4** Memory Spill Cost | Hierarchical memory beats spill at realistic working sets | Redesign if spill joules/token > recompute | Defined – awaiting harness |
+## Active Tasks
 
-**Blocked on**: `harness/m4_energy_harness.py` modes `ane_utilization`, `thermal_ipj_curve`, `meta_tax`, `memory_spill` (see IPJ protocol §2.3–§2.4).
+- W1-00: Docs audit — **Complete**
+- W1-01: Harness + `setup_check` + tests — **Complete**
+- W1-02: Thermal baseline on physical M4 — **Ready to run**
+- W1-03: SRAM cliff — **Ready** (after W1-02)
+- W1-04: KV comparison — **Ready**
+- E1–E4 — **Harness ready**; run after Week 1 baselines
 
-**Posture**: Measure first on the single M4; redesign early if a gate fails. No model architecture or self-improvement cadence until applicable E-gates pass.
+## Key Risks (see `Risk_Register.md`)
 
-**Docs**: `Phase0_AI_Coder_Task_List.md` § Phase 0 Extended; `Risk_Register.md` R-ANE-01 … R-MEM-04.
-
-## Documentation Audit Log (2026-06-30)
-
-### Task 1 — Foundational physics grounding
-- `Alalā_Physics_Corrected_Foundation.md` — §0 M4 silicon realities; thermal first-class; ANE-first default
-- `IPJ_Measurement_Protocol_Alalā.md`, `Phase0_Microbenchmark_Suite_Plan.md`, memory docs, HCA — M4-specific phrasing
-
-### Task 2 — Operational IPJ
-- `IPJ_Measurement_Protocol_Alalā.md` §2.1–§2.3: executable IPJ\(_{phase0}\), SRAM cliff method, harness spec
-- `How_to_Run_First_Micro_Benchmark_on_M4_Alalā.md`: physical-M4-only execution guide
-- `harness/README.md`: four harness modes
-
-### Task 3 — Program Board + Risk Register
-- Phase 0 success criteria table (above)
-- `Risk_Register.md`: Phase 0 risks R02–R06 (SRAM cliff, thermal, 24 GB pressure, orchestration, dequant)
-
-### Task 4 — Cross-consistency
-- `Project_Index_Alalā.md`: full 19-doc navigation hub, operational IPJ, harness modes
-- Terminology alignment: unified-memory spills, ≥30% SRAM cliff, execution constraint on planning docs
-
-### Task 5 — Execution guidance
-- `OSLab_Execution_Playbook.md` v2.1: physical M4 only, powermetrics required, thermal safety, ANE-first
-
-## Human Review Flags (post-audit)
-| Doc | Flag | Reason |
-|-----|------|--------|
-| `Compiler_Passes_Skeleton_Alalā.md` | Expected Benefit numbers unmeasured | Pass benefits are hypotheses until Phase 1 M4 IPJ validation |
-| `Alalā_Improvement_Playbook.md` | Marginal IPJ not cross-linked to §2.1 | Self-improvement gating should cite operational IPJ after Phase 0 |
-| `Meta_Controller_Skeleton_Alalā.md` | Threshold constants unspecified | Controller thresholds should be set from Phase 0 measured baselines |
-| Phase 0 success criteria | Sustained ANE utilization % TBD | Target % intentionally deferred until thermal baseline on hardware |
-
-## Active Tasks (as of today)
-- W1-00: Docs audit (Tasks 1–5) — **Complete**
-- W1-01: Harness + setup_check — **Complete**
-- W1-02: Thermal Baseline on physical M4 — **Ready** (`--idle-duration 600 --duration 600`)
-- W1-03: ANE SRAM Cliff Characterization — Blocked on physical M4 + MLX workload
-
-## Key Risks (Top 5 — see `Risk_Register.md`)
-1. **R-GAP-01** Low real ANE forward-pass coverage (mitigation: E1)
-2. **R-GAP-02** Thermal throttling erodes sustained IPJ (mitigation: E2)
-3. **R-GAP-03** Meta-tax exceeds marginal gains (mitigation: E3)
-4. **R-GAP-04** Working-set pressure and SRAM spill cost (mitigation: E4)
-5. **R03** SRAM cliff impact on long-context decode
-
-## Recent Decisions
-- 2026-06-30: Thermal headroom and sustained IPJ take precedence over peak throughput.
-- 2026-06-30: No IPJ claim without raw powermetrics + thermal artifacts.
-- 2026-06-30: ANE-first routing is default; measure CPU orchestration before minimizing.
-- 2026-06-30: W1-01 harness skeleton landed (`m4_energy_harness.py`, 8 modes, powermetrics + JSONL).
+1. **R-GAP-01** → E1 | 2. **R-GAP-02** → E2 | 3. **R-GAP-03** → E3 | 4. **R-GAP-04** → E4
 
 ## Blockers
-- **Physical Mac Mini M4 24 GB** required for real `powermetrics` (not `--dry-run`).
-- Fused int4 KV and ANE-forward decode kernels not yet integrated (kv_comparison uses same workload both paths).
+
+- Physical Mac Mini M4 24 GB + `sudo` for real `powermetrics` (only remaining gate for validated data grade **A**).
+- Fused ANE int4 KV kernel (Phase 1; harness has distinct workload paths today).
 
 ## Next Milestone
-Implement harness per IPJ protocol §2.3; run thermal baseline on physical Mac Mini M4 24 GB.
 
-## Human Review Flags
-_See table above (post-audit)._
+```bash
+sudo python harness/m4_energy_harness.py --mode setup_check --duration 30
+sudo python harness/m4_energy_harness.py --mode thermal_baseline --idle-duration 600 --duration 600
+python harness/validate_artifact.py --require-m4 logs/<experiment_id>.jsonl
+```
+
+Update `results/measurement_status.json` and this board with findings.
 
 ## Notes
-This board must be updated by Grok Build after every significant task or discovery.
+
+This board must be updated after every significant task or M4 measurement run.

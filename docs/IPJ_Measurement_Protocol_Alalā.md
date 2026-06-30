@@ -1,6 +1,6 @@
 # IPJ Measurement Protocol — Alalā
 
-**Version**: 1.3  
+**Version**: 1.4  
 **Purpose**: Define how Intelligence per Joule (IPJ) is measured, logged, and used as a gating criterion on **Mac Mini M4 24 GB** physical hardware.
 
 **Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
@@ -183,6 +183,17 @@ IPJ denominators must be decomposable where possible:
 ```
 
 **Rule**: No IPJ claim is valid without raw `powermetrics` logs + thermal data attached to the result (file path or inline archive) **and** stated thermal headroom conditions (§2.5).
+
+### 3.5 Artifact Validation (`harness/validate_artifact.py`)
+
+Before publishing any IPJ value:
+
+```bash
+python harness/validate_artifact.py logs/<experiment_id>.jsonl
+python harness/validate_artifact.py --require-m4 logs/<experiment_id>.jsonl  # physical M4 only
+```
+
+Track criterion closure in `results/measurement_status.json`.
 
 ## 4. Gating Rules
 

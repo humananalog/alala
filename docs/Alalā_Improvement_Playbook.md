@@ -1,7 +1,9 @@
 # Alalā Improvement Playbook
 
-**Version**: 1.0  
+**Version**: 1.1  
 **Purpose**: Define how self-improvement is performed, gated, and logged.
+
+**IPJ authority**: All improvement IPJ claims use operational definitions in `IPJ_Measurement_Protocol_Alalā.md` §2.1 (Phase 0) and §2.4 E3 (meta-tax). No marginal IPJ without raw `powermetrics` + thermal logs per §2.5.
 
 ## Core Rules
 
@@ -9,7 +11,7 @@
    Every proposed change must have a clear hypothesis about how it will improve IPJ or future capability.
 
 2. **Positive marginal IPJ required**  
-   A change is only kept if it produces positive marginal IPJ over its expected lifetime (including the cost of the improvement itself).
+   A change is only kept if it produces positive **net** marginal IPJ per `IPJ_Measurement_Protocol_Alalā.md` §2.1, including meta-overhead per E3 (`energy_meta_total_joules` vs `energy_saved_subsequent_joules`). Run `harness/m4_energy_harness.py --mode meta_tax` before scaling any self-improvement cadence.
 
 3. **HCA compliance is mandatory**  
    Every change must pass the HCA Impact Statement check. Changes that reduce human trust, autonomy, or flourishing are rejected.
@@ -22,7 +24,7 @@
 1. **Propose** — Identify a potential improvement (new prompt, new compiler pass, new memory layout, etc.).
 2. **Evaluate** — Run the meta-controller (HCA + marginal IPJ check).
 3. **Test** — Apply the change in a controlled experiment with full logging.
-4. **Measure** — Compare IPJ, utilization, thermal behavior, and HCA metrics before vs after.
+4. **Measure** — Compare sustained IPJ (thermal steady state), ANE utilization, orchestration tax, and HCA metrics before vs after on physical M4.
 5. **Decide** — Keep, rollback, or modify based on results.
 6. **Log & Archive** — Record the outcome for future learning.
 

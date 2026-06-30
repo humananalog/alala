@@ -18,18 +18,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from workloads import (
-    HAS_MLX,
-    WorkloadResult,
-    cpu_sustained_load,
-    mlx_context_scaled_load,
-    mlx_matmul_sustained,
-    resolve_workload_name,
-    run_in_thread,
-)
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from workloads import (
+    HAS_MLX,
+    WORKLOAD_BY_MODE,
+    WorkloadResult,
+    ane_forward_pass_profile,
+    cpu_sustained_load,
+    kv_fp16_decode,
+    kv_int4_decode,
+    memory_recompute_load,
+    memory_spill_load,
+    mlx_context_scaled_load,
+    mlx_matmul_sustained,
+    orchestration_loop,
+    resolve_workload_name,
+)
+
 LOGS_DIR = REPO_ROOT / "logs"
 RESULTS_DIR = REPO_ROOT / "results"
 
@@ -339,18 +346,29 @@ def run_session(
         "notes": workload_result.notes,
         **energy_fields(totals, orch_frac=orch_frac),
     }
+    if workload_result.ane_compute_fraction_pct is not None:
+        record["ane_compute_fraction_pct"] = workload_result.ane_compute_fraction_pct
+        record["orchestration_tax_pct"] = round(100 - workload_result.ane_compute_fraction_pct, 2)
     if args.mode == "ane_utilization" and workload_result.forward_passes:
         ane_frac = totals.ane_joules / total_j * 100
         record["ane_utilization_pct"] = round(ane_frac, 2)
         record["ane_compute_fraction_pct"] = round(ane_frac, 2)
         record["orchestration_tax_pct"] = round(totals.cpu_joules * orch_frac / total_j * 100, 2)
+    if workload_result.working_set_mb is not None:
+        record["working_set_mb"] = workload_result.working_set_mb
     if extra:
         record.update(extra)
     write_jsonl(LOGS_DIR / f"{experiment_id}.jsonl", record)
     return record
 
 
-def pick_workload(args: argparse.Namespace):
+def pick_workload(args: argparse.Namespace, kind: str = "thermal_baseline"):
+    if kind in WORKLOAD_BY_MODE:
+        fn = WORKLOAD_BY_MODE[kind]
+        kw: dict[str, Any] = {}
+        if kind in ("kv_fp16", "kv_int4", "memory_spill", "memory_recompute", "sram_cliff"):
+            kw["context_length"] = args.context
+        return fn, kw
     name = resolve_workload_name(args.workload)
     if name == "mlx":
         return mlx_matmul_sustained, {}
@@ -360,7 +378,7 @@ def pick_workload(args: argparse.Namespace):
 def run_setup_check(args: argparse.Namespace) -> dict[str, Any]:
     args.duration = max(args.duration, 30.0)
     eid = args.experiment_id or f"setup_{uuid.uuid4().hex[:8]}"
-    wl, kw = pick_workload(args)
+    wl, kw = pick_workload(args, "thermal_baseline")
     rec = run_session(args, experiment_id=eid, phase="setup_check", duration_s=args.duration, workload_fn=wl, workload_kwargs=kw)
     write_jsonl(LOGS_DIR / "setup_log.jsonl", rec)
     return rec
@@ -375,7 +393,7 @@ def run_thermal_baseline(args: argparse.Namespace) -> dict[str, Any]:
         idle = run_session(args, experiment_id=eid, phase="idle", duration_s=args.idle_duration)
         records.append(idle)
 
-    wl, kw = pick_workload(args)
+    wl, kw = pick_workload(args, "thermal_baseline")
     load = run_session(
         args,
         experiment_id=eid,
@@ -460,7 +478,7 @@ def run_thermal_ipj_curve(args: argparse.Namespace) -> dict[str, Any]:
     windows: list[dict[str, Any]] = []
     elapsed = 0.0
     first_ipj: float | None = None
-    wl, kw = pick_workload(args)
+    wl, kw = pick_workload(args, "thermal_baseline")
 
     while elapsed < args.duration:
         chunk = min(window_s, args.duration - elapsed)
@@ -497,9 +515,24 @@ def run_thermal_ipj_curve(args: argparse.Namespace) -> dict[str, Any]:
 
 def run_kv_comparison(args: argparse.Namespace) -> dict[str, Any]:
     eid = args.experiment_id or f"kv_comparison_{uuid.uuid4().hex[:8]}"
-    wl, kw = pick_workload(args)
-    fp16 = run_session(args, experiment_id=eid, phase="fp16", duration_s=args.duration, workload_fn=wl, workload_kwargs=kw, extra={"kv_path": "fp16"})
-    int4 = run_session(args, experiment_id=eid, phase="int4", duration_s=args.duration, workload_fn=wl, workload_kwargs=kw, extra={"kv_path": "int4_fused"})
+    fp16 = run_session(
+        args,
+        experiment_id=eid,
+        phase="fp16",
+        duration_s=args.duration,
+        workload_fn=kv_fp16_decode,
+        workload_kwargs={"context_length": args.context},
+        extra={"kv_path": "fp16"},
+    )
+    int4 = run_session(
+        args,
+        experiment_id=eid,
+        phase="int4",
+        duration_s=args.duration,
+        workload_fn=kv_int4_decode,
+        workload_kwargs={"context_length": args.context},
+        extra={"kv_path": "int4_fused"},
+    )
     dequant = max(0.0, (int4.get("energy_joules") or 0) - (fp16.get("energy_joules") or 0))
     summary = {
         "experiment_id": eid,
@@ -508,15 +541,129 @@ def run_kv_comparison(args: argparse.Namespace) -> dict[str, Any]:
         "fp16": fp16,
         "int4": int4,
         "energy_dequant_joules": round(dequant, 4),
-        "notes": "kv paths use same MLX stub until fused int4 KV kernel integrated",
+        "notes": "distinct kv_fp16 vs kv_int4 workload paths; replace with fused ANE kernel when ready",
     }
     ensure_dirs("kv_comparison")
     (RESULTS_DIR / "kv_comparison" / f"{eid}_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return summary
 
 
+def run_orchestration(args: argparse.Namespace) -> dict[str, Any]:
+    eid = args.experiment_id or f"orchestration_{uuid.uuid4().hex[:8]}"
+    rec = run_session(
+        args,
+        experiment_id=eid,
+        phase="orchestration",
+        duration_s=args.duration,
+        workload_fn=orchestration_loop,
+        workload_kwargs={},
+    )
+    total = rec.get("energy_joules") or 1e-9
+    rec["orchestration_tax_pct"] = rec.get("orchestration_tax_pct") or round(
+        (rec.get("energy_cpu_orchestration_joules") or 0) / total * 100, 2
+    )
+    return rec
+
+
+def run_ane_utilization(args: argparse.Namespace) -> dict[str, Any]:
+    eid = args.experiment_id or f"ane_utilization_{uuid.uuid4().hex[:8]}"
+    return run_session(
+        args,
+        experiment_id=eid,
+        phase="ane_utilization",
+        duration_s=args.duration,
+        workload_fn=ane_forward_pass_profile,
+        workload_kwargs={},
+    )
+
+
+def run_memory_spill(args: argparse.Namespace) -> dict[str, Any]:
+    eid = args.experiment_id or f"memory_spill_{uuid.uuid4().hex[:8]}"
+    spill = run_session(
+        args,
+        experiment_id=eid,
+        phase="spill",
+        duration_s=args.duration,
+        workload_fn=memory_spill_load,
+        workload_kwargs={"context_length": args.context},
+        extra={"path": "spill"},
+    )
+    recompute = run_session(
+        args,
+        experiment_id=eid,
+        phase="recompute",
+        duration_s=args.duration,
+        workload_fn=memory_recompute_load,
+        workload_kwargs={"context_length": args.context},
+        extra={"path": "recompute"},
+    )
+    spill_tok = max(spill.get("forward_passes") or 1, 1)
+    recompute_tok = max(recompute.get("forward_passes") or 1, 1)
+    spill_jpt = (spill.get("energy_joules") or 0) / spill_tok
+    recompute_jpt = (recompute.get("energy_joules") or 0) / recompute_tok
+    summary = {
+        "experiment_id": eid,
+        "benchmark_name": "memory_spill",
+        "context_length": args.context,
+        "spill": spill,
+        "recompute": recompute,
+        "energy_spill_joules_per_token": round(spill_jpt, 6),
+        "energy_recompute_joules_per_token": round(recompute_jpt, 6),
+        "spill_vs_recompute_delta": round(spill_jpt - recompute_jpt, 6),
+        "working_set_mb_spill": spill.get("working_set_mb"),
+    }
+    ensure_dirs("memory_spill")
+    (RESULTS_DIR / "memory_spill" / f"{eid}_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    return summary
+
+
+def run_meta_tax(args: argparse.Namespace) -> dict[str, Any]:
+    """E3: bounded propose → evaluate → apply cycle with per-phase energy."""
+    eid = args.experiment_id or f"meta_tax_{uuid.uuid4().hex[:8]}"
+    phases = []
+    for phase, duration, fn, kw in (
+        ("meta_propose", min(10.0, args.duration * 0.1), cpu_sustained_load, {}),
+        ("meta_evaluate", args.duration * 0.4, kv_fp16_decode, {"context_length": args.context}),
+        ("meta_apply", args.duration * 0.2, mlx_matmul_sustained, {}),
+    ):
+        rec = run_session(
+            args,
+            experiment_id=eid,
+            phase=phase,
+            duration_s=max(duration, 2.0),
+            workload_fn=fn,
+            workload_kwargs=kw,
+        )
+        rec["energy_meta_phase_joules"] = rec.get("energy_joules")
+        phases.append(rec)
+    baseline = run_session(
+        args,
+        experiment_id=eid,
+        phase="post_change_baseline",
+        duration_s=max(args.duration * 0.3, 5.0),
+        workload_fn=kv_fp16_decode,
+        workload_kwargs={"context_length": args.context},
+    )
+    meta_total = sum(p.get("energy_joules") or 0 for p in phases)
+    saved = max(0.0, (phases[1].get("energy_joules") or 0) - (baseline.get("energy_joules") or 0))
+    net = saved - meta_total
+    summary = {
+        "experiment_id": eid,
+        "benchmark_name": "meta_tax",
+        "phases": phases,
+        "post_change_baseline": baseline,
+        "energy_meta_total_joules": round(meta_total, 4),
+        "energy_saved_subsequent_joules": round(saved, 4),
+        "net_ipj_delta": round(net, 6),
+        "notes": "E3 bounded cycle; net_ipj_delta > 0 required to scale self-improvement cadence",
+    }
+    ensure_dirs("meta_tax")
+    (RESULTS_DIR / "meta_tax" / f"{eid}_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    return summary
+
+
 def run_stub(args: argparse.Namespace, mode: str, extra: dict[str, Any]) -> dict[str, Any]:
-    wl, kw = pick_workload(args)
+    wl, kw = pick_workload(args, "thermal_baseline")
     eid = args.experiment_id or f"{mode}_{uuid.uuid4().hex[:8]}"
     return run_session(args, experiment_id=eid, phase=mode, duration_s=args.duration, workload_fn=wl, workload_kwargs=kw, extra=extra)
 
@@ -526,19 +673,11 @@ MODE_HANDLERS = {
     "thermal_baseline": run_thermal_baseline,
     "sram_cliff": run_sram_cliff,
     "kv_comparison": run_kv_comparison,
-    "orchestration": lambda a: run_stub(a, "orchestration", {"orchestration_tax_pct": None}),
-    "ane_utilization": lambda a: run_stub(a, "ane_utilization", {}),
+    "orchestration": run_orchestration,
+    "ane_utilization": run_ane_utilization,
     "thermal_ipj_curve": run_thermal_ipj_curve,
-    "meta_tax": lambda a: run_stub(
-        a,
-        "meta_tax",
-        {"energy_meta_total_joules": None, "energy_saved_subsequent_joules": None, "net_ipj_delta": None},
-    ),
-    "memory_spill": lambda a: run_stub(
-        a,
-        "memory_spill",
-        {"context_length": a.context, "working_set_mb": None, "energy_spill_joules_per_token": None},
-    ),
+    "meta_tax": run_meta_tax,
+    "memory_spill": run_memory_spill,
 }
 
 
