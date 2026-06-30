@@ -25,10 +25,14 @@ Each mode must emit raw `powermetrics` log + JSONL per `IPJ_Measurement_Protocol
 - `docs/Phase0_Microbenchmark_Suite_Plan.md`
 - `docs/IPJ_Measurement_Protocol_Alalā.md`
 
-## Usage (when implemented)
+## Usage
 
 ```bash
-python harness/m4_energy_harness.py --mode thermal_baseline --duration 120
+# On physical Mac Mini M4 24 GB (usually requires sudo for powermetrics)
+sudo python harness/m4_energy_harness.py --mode thermal_baseline --duration 600
+
+# Off-hardware structure check only
+python harness/m4_energy_harness.py --dry-run --mode thermal_baseline --duration 30
 ```
 
 Logs go to `logs/`; results to `results/`.

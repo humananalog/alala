@@ -16,8 +16,8 @@ Gap-closing experiments E1–E4 defined as decision gates. Awaiting harness impl
 **Readiness (2026-06-30)**:
 - Documentation audit Tasks 1–5 **complete**
 - `./verify.sh` passing
-- `harness/m4_energy_harness.py` **not implemented** — blocker for physical M4 runs
-- Next action: implement harness per `IPJ_Measurement_Protocol_Alalā.md` §2.3
+- `harness/m4_energy_harness.py` **implemented** (W1-01 skeleton: powermetrics + JSONL; MLX workloads pending)
+- Next action: run W1-02 thermal baseline on **physical M4** with `sudo`
 
 ## Phase 0 Success Criteria (Measurable M4 Numbers)
 
@@ -82,9 +82,9 @@ Four over-optimistic assumptions are now **testable hypotheses** with minimal de
 
 ## Active Tasks (as of today)
 - W1-00: Docs audit (Tasks 1–5) — **Complete**
-- W1-01: Implement `harness/m4_energy_harness.py` — **Next**
-- W1-02: Thermal Baseline on physical M4 — Blocked on harness
-- W1-03: ANE SRAM Cliff Characterization — Blocked on harness
+- W1-01: Implement `harness/m4_energy_harness.py` — **Complete** (skeleton; dry-run validated)
+- W1-02: Thermal Baseline on physical M4 — **Next** (`sudo python harness/m4_energy_harness.py --mode thermal_baseline --duration 600`)
+- W1-03: ANE SRAM Cliff Characterization — Blocked on physical M4 + MLX workload
 
 ## Key Risks (Top 5 — see `Risk_Register.md`)
 1. **R-GAP-01** Low real ANE forward-pass coverage (mitigation: E1)
@@ -97,10 +97,11 @@ Four over-optimistic assumptions are now **testable hypotheses** with minimal de
 - 2026-06-30: Thermal headroom and sustained IPJ take precedence over peak throughput.
 - 2026-06-30: No IPJ claim without raw powermetrics + thermal artifacts.
 - 2026-06-30: ANE-first routing is default; measure CPU orchestration before minimizing.
-- 2026-06-30: Added E1–E4 gap-closing decision-gate experiments; risks R-ANE-01 … R-MEM-04.
+- 2026-06-30: W1-01 harness skeleton landed (`m4_energy_harness.py`, 8 modes, powermetrics + JSONL).
 
 ## Blockers
-- `harness/m4_energy_harness.py` not implemented (required before physical M4 runs).
+- Physical Mac Mini M4 24 GB required for real `powermetrics` data (use `--dry-run` off-hardware only).
+- MLX/ANE decode workloads not yet integrated into harness modes (stubs use CPU sustained load).
 
 ## Next Milestone
 Implement harness per IPJ protocol §2.3; run thermal baseline on physical Mac Mini M4 24 GB.
