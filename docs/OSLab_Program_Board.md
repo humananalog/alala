@@ -42,6 +42,13 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 - Phase 0 success criteria table (above)
 - `Risk_Register.md`: Phase 0 risks R02–R06 (SRAM cliff, thermal, 24 GB pressure, orchestration, dequant)
 
+### Task 4 — Cross-consistency (pending commit)
+- `Project_Index_Alalā.md`: full 19-doc navigation hub, operational IPJ, harness modes
+- Terminology alignment: unified-memory spills (not generic DRAM), ≥30% SRAM cliff, execution constraint on planning docs
+
+### Task 5 — Execution guidance (pending commit)
+- `OSLab_Execution_Playbook.md` v2.1: physical M4 only, powermetrics required, thermal safety, ANE-first
+
 ## Active Tasks (as of today)
 - W1-00: Docs audit (Tasks 1–3) — **Complete**
 - W1-01: Implement `harness/m4_energy_harness.py` — **Next**
