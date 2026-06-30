@@ -44,7 +44,7 @@
 | Technique | Description | When to Use |
 |-----------|-------------|-------------|
 | **Fused KV Cache** | Store KV in int4/int8, dequantize on the fly | Decode phase (default) |
-| **SRAM Tiling + Recomputation** | Split operations so working set fits in SRAM | When DRAM spills would occur |
+| **SRAM Tiling + Recomputation** | Split operations so working set fits in ANE SRAM | When unified-memory spills would occur |
 | **Double Buffering / Prefetch** | Overlap computation of layer N with loading of layer N+1 | Long context or large models |
 | **Paged / On-demand Loading** | Only load experts or layers that are actually used | Mixture-of-Experts or very large models |
 | **Activation Recomputation** | Recompute activations instead of storing them | Memory-bound training or long agent trajectories |

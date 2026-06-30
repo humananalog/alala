@@ -1,8 +1,10 @@
 # Phase 0 — AI Coder Task List (Grok Build)
 
-**Version**: 1.0  
+**Version**: 1.1  
 **For**: Grok Build (local AI coding agent)  
 **Rules**: You must strictly follow `AI_Coder_Rules_Guidelines_Alalā.md` at all times.
+
+**Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold. No IPJ claim without raw `powermetrics` logs + thermal data (`IPJ_Measurement_Protocol_Alalā.md` §2.1).
 
 This document contains explicit, numbered tasks for Phase 0. Complete them in order unless the Program Board instructs otherwise.
 

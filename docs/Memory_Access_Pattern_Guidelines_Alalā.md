@@ -42,7 +42,7 @@
 | Workload Type | Recommended Strategy | Why |
 |---------------|----------------------|-----|
 | Short decode | Fused int4 KV + keep everything in SRAM | Highest efficiency |
-| Long context decode | Tiled execution + selective recomputation | Avoids DRAM spills |
+| Long context decode | Tiled execution + selective recomputation | Avoids unified-memory spills past ANE SRAM cliff |
 | Agent loop with tools | Keep recent context + tool state hot | Reduces repeated loading |
 | Self-improvement / training | Aggressive recomputation + streaming | Memory is the bottleneck |
 

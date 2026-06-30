@@ -1,7 +1,9 @@
 # Phase 0 Week 1–2 Task Breakdown — Alalā
 
-**Version**: 1.0  
-**Purpose**: Detailed, executable task list for the first two weeks of Phase 0.
+**Version**: 1.1  
+**Purpose**: Detailed, executable task list for the first two weeks of Phase 0 on physical Mac Mini M4 24 GB.
+
+**Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
 
 ## Week 1: Foundation & Thermal Characterization
 
@@ -22,7 +24,7 @@
 
 ### Day 5–7: ANE SRAM Cliff Characterization
 - Run decode workloads with increasing context lengths
-- Identify approximate context length where performance drops ~25–30%
+- Identify context length where **sustained** throughput drops ≥30% (SRAM cliff per `IPJ_Measurement_Protocol_Alalā.md` §2.2)
 - Document results with graphs/tables
 
 **Acceptance Criteria**: Reproducible SRAM cliff point identified.
