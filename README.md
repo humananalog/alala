@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="assets/alala-img.jpg" alt="Alalā header: hardware-aware self-improving AI on M4" width="100%">
+  <img src="assets/alala-img.jpg" alt="Alalā: Hardware-Aware Self-Improving AI models for M4 Silicon" width="100%">
 </p>
-
-<h1 align="center">Alalā</h1>
 
 <p align="center">
   <strong>Physics-first, measurement-driven AI for Apple Silicon M4. Goal: maximize Intelligence per Joule (IPJ).</strong>
