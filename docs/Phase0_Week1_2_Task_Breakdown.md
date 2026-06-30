@@ -1,6 +1,6 @@
 # Phase 0 Week 1–2 Task Breakdown — Alalā
 
-**Version**: 1.1  
+**Version**: 1.2  
 **Purpose**: Detailed, executable task list for the first two weeks of Phase 0 on physical Mac Mini M4 24 GB.
 
 **Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
@@ -50,6 +50,19 @@
 - Decide on priorities for the rest of Phase 0
 
 **Acceptance Criteria**: First Phase 0 progress report completed and logged.
+
+## Phase 0 Extended – Gap-Closing Experiments (Decision Gates)
+
+Runs **after** corresponding Week 1 prerequisites on **physical Mac Mini M4 24 GB** only. Respect thermal limits — stop if temperature exceeds safe sustained threshold. See `Phase0_AI_Coder_Task_List.md` for full specs. Status: **Defined – awaiting harness implementation**.
+
+| ID | When | Duration | Key output |
+|----|------|----------|------------|
+| E1 | After W1-04 | 5–10 min sustained | `ane_compute_fraction_pct`, orchestration energy fraction |
+| E2 | After W1-02 | 30–60+ min | IPJ vs. time curve, `time_to_throttle_s`, ≥20% degradation gate |
+| E3 | After E1 + E2 pass | One full cycle | `net_ipj_delta`, meta joules breakdown |
+| E4 | After W1-03 | Per context step | Spill vs. recompute joules/token above \( L_{\text{cliff}} \) |
+
+**Lab rule**: Failed decision gate → redesign before advancing model architecture or self-improvement cadence.
 
 ## Notes for Grok Build
 

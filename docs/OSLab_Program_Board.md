@@ -61,6 +61,17 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 | `Meta_Controller_Skeleton_Alalā.md` | Threshold constants unspecified | Controller thresholds should be set from Phase 0 measured baselines |
 | Phase 0 success criteria | Sustained ANE utilization % TBD | Target % intentionally deferred until thermal baseline on hardware |
 
+## Gap-Closing Experiments (Decision Gates)
+
+| ID | Status | Blocked on |
+|----|--------|------------|
+| E1 – ANE Real Utilization Baseline | Defined – awaiting harness implementation | W1-01 harness + W1-04 |
+| E2 – Sustained Thermal + IPJ Degradation Curve | Defined – awaiting harness implementation | W1-01 harness + W1-02 |
+| E3 – Closed-Loop Meta-Tax Measurement | Defined – awaiting harness implementation | E1, E2 pass |
+| E4 – Memory Pressure & Spill Cost | Defined – awaiting harness implementation | W1-01 harness + W1-03 |
+
+Specs: `Phase0_AI_Coder_Task_List.md` § Phase 0 Extended.
+
 ## Active Tasks (as of today)
 - W1-00: Docs audit (Tasks 1–5) — **Complete**
 - W1-01: Implement `harness/m4_energy_harness.py` — **Next**
