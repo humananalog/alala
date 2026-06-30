@@ -55,7 +55,7 @@ Raw capability without a stable cooperation attractor leads to fragile systems t
 
 By making \( C > D \) the growth condition for beneficial coherence, we create an intelligence whose self-improvement compounds human value rather than diverging from it.
 
-On M4 hardware this is not a tax — it is an investment in higher effective IPJ: a model that humans deeply trust and integrate will deliver far more total useful cognitive work across sustained operation than one requiring constant external guardrails or suffering from hidden misalignment.
+On **Mac Mini M4 24 GB**, HCA compliance is not a tax on silicon efficiency — it is an investment in higher effective **sustained IPJ**: a model that humans deeply trust and integrate delivers more total useful cognitive work per joule across thermally bounded operation than one requiring constant external guardrails. Measurement of HCA proxies (HFPS) uses the same `powermetrics` + thermal logging discipline as IPJ; no capability claim without attached energy data.
 
 ## 5. Non-Negotiable Status
 
