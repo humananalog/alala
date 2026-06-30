@@ -92,7 +92,24 @@ if [ ! -f LICENSE ]; then
   fail "LICENSE file missing"
 fi
 
-# 8. Optional: warn if Phase 0 harness not yet present
+# 8. Cursor agent structure
+if [ ! -f AGENTS.md ] || [ "$(wc -c < AGENTS.md)" -lt 500 ]; then
+  fail "AGENTS.md is missing or too small"
+fi
+
+for rule in .cursor/rules/alala-core.mdc .cursor/rules/docs-authoring.mdc .cursor/rules/phase0-measurement.mdc; do
+  if [ ! -f "$rule" ]; then
+    fail "Missing Cursor rule: $rule"
+  fi
+done
+
+for dir in harness experiments logs results checkpoints; do
+  if [ ! -d "$dir" ]; then
+    fail "Missing directory: $dir/"
+  fi
+done
+
+# 9. Optional: warn if Phase 0 harness not yet present
 if [ ! -f harness/m4_energy_harness.py ]; then
   warn "harness/m4_energy_harness.py not yet implemented (Phase 0 pending)"
 fi

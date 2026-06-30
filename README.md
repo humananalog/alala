@@ -13,17 +13,23 @@ We work strictly from first principles, with deep co-design between the model ar
 
 ## Repository Structure
 
+- `AGENTS.md` – Instructions for Cursor / cloud AI coding agents
+- `.cursor/rules/` – Cursor project rules (always-on + scoped)
 - `docs/` – All core documentation (physics, architecture, execution, measurement, etc.)
+- `harness/` – Phase 0 measurement harness (M4)
+- `experiments/`, `logs/`, `results/`, `checkpoints/` – Phase 0 workflow directories
 - Key entry points:
   - `docs/Project_Index_Alalā.md` – Main navigation hub
-  - `docs/AI_Coder_Rules_Guidelines_Alalā.md` – Rules for Grok Build
+  - `docs/AI_Coder_Rules_Guidelines_Alalā.md` – Rules for AI coders
   - `docs/Phase0_AI_Coder_Task_List.md` – Explicit tasks for Phase 0
 
-## Getting Started (for Grok Build)
+## Getting Started (Cursor / AI Agents)
 
-1. Read `docs/AI_Coder_Rules_Guidelines_Alalā.md`
-2. Read `docs/Project_Index_Alalā.md`
-3. Follow `docs/Phase0_AI_Coder_Task_List.md`
+1. Read `AGENTS.md`
+2. Read `docs/AI_Coder_Rules_Guidelines_Alalā.md`
+3. Read `docs/Project_Index_Alalā.md`
+4. Follow `docs/Phase0_AI_Coder_Task_List.md`
+5. Run `./verify.sh` before every commit
 
 ## Status
 

@@ -1,0 +1,35 @@
+---
+globs: harness/**,experiments/**,**/*.py
+alwaysApply: false
+description: Phase 0 measurement harness and experiment code conventions
+---
+
+# Phase 0 Measurement Code
+
+Applies to harness, experiments, and Python measurement code.
+
+## Before implementing
+Read:
+- @docs/Phase0_AI_Coder_Task_List.md
+- @docs/Phase0_Microbenchmark_Suite_Plan.md
+- @docs/How_to_Run_First_Micro_Benchmark_on_M4_Alalā.md
+- @docs/IPJ_Measurement_Protocol_Alalā.md
+
+## Logging
+- All experiments output structured JSONL to `logs/` (see IPJ protocol schema).
+- Include: timestamp, experiment_id, key metrics, temperature, power, notes.
+- Never commit large log files — `logs/` contents are gitignored.
+
+## Harness requirements (`harness/m4_energy_harness.py`)
+- Support modes: `thermal_baseline`, `sram_cliff`, `kv_comparison`
+- Use `powermetrics` for CPU/GPU/ANE power where available
+- CLI with `--mode`, `--duration`, `--context`, `--iterations` flags per benchmark docs
+
+## Code style
+- Python 3.11+; type hints on public functions
+- Prefer stdlib + numpy; matplotlib optional for plots
+- Clear error messages for missing sudo/powermetrics permissions
+
+## Results
+- Write outputs to `results/<experiment_name>/`
+- Log summary metrics; update Program Board after benchmark runs

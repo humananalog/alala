@@ -1,0 +1,35 @@
+---
+alwaysApply: true
+description: Core Alalā project standards for all agent work
+---
+
+# Alalā Core Standards
+
+You are working on Alalā — physics-first AI on Apple Silicon M4 maximizing Intelligence per Joule.
+
+## Required reading order
+1. @docs/Project_Index_Alalā.md
+2. @docs/AI_Coder_Rules_Guidelines_Alalā.md
+3. @docs/OSLab_Program_Board.md (current status)
+
+## Code and doc discipline
+- Minimal, focused diffs — do not refactor unrelated code.
+- Match existing naming, types, and patterns in surrounding files.
+- Never commit placeholder stubs (`Content of X.md`, `Binary zip content`, etc.).
+- Run `./verify.sh` before every commit; it must pass.
+- Update @docs/OSLab_Program_Board.md after significant tasks.
+
+## Physics and safety constraints
+- SRAM budget: keep hot working sets under ~28–30 MB when possible.
+- ANE-first for compute-bound ops; minimize Python orchestration in hot paths.
+- Respect thermal limits; treat temperature as a scheduling variable.
+- Self-improvement requires HCA Impact Statement + positive marginal IPJ.
+
+## Communication
+- Be precise and technical; include numbers (IPJ, joules, tokens/s, utilization %) when relevant.
+- State assumptions; flag risks and unknowns.
+- Escalate to human for >10% IPJ impact or architectural decisions.
+
+## References
+- Operational context: @AGENTS.md
+- Full rules: @docs/AI_Coder_Rules_Guidelines_Alalā.md

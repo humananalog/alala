@@ -1,0 +1,19 @@
+---
+globs: docs/**/*.md
+alwaysApply: false
+description: Rules for authoring and editing Alalā documentation
+---
+
+# Documentation Authoring
+
+When editing files under `docs/`:
+
+- Preserve authoritative tone; these docs are executed by AI agents on M4 hardware.
+- Use complete markdown: headings, tables, code blocks — never one-line stubs.
+- Cross-link related docs using backtick filenames (e.g. `OSLab_Program_Board.md`).
+- Keep `docs/Project_Index_Alalā.md` status column accurate when adding or completing docs.
+- After doc changes that affect project status, update @docs/OSLab_Program_Board.md.
+- Do not create meta/staging files (`filename.md`, `OtherKeyFiles.md`).
+- HCA and IPJ references must align with @docs/Alalā_Core_Invariant_Specification_HCA.md and @docs/IPJ_Measurement_Protocol_Alalā.md.
+
+Verification: `./verify.sh` checks all 19 indexed docs exist and are >200 bytes.

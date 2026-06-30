@@ -1,0 +1,26 @@
+# Secrets
+.env
+.env.*
+
+# Experiment outputs
+logs/*
+!logs/.gitkeep
+results/*
+!results/.gitkeep
+checkpoints/*
+!checkpoints/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
