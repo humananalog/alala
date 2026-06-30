@@ -8,9 +8,12 @@ Measurement harness for Phase 0 M4 micro-benchmarks.
 
 ## Modes (from docs)
 
-- `thermal_baseline`
-- `sram_cliff`
-- `kv_comparison`
+- `thermal_baseline` — Benchmark 1; thermal curve + safe sustained envelope
+- `sram_cliff` — Benchmark 2; SRAM cliff detection (≥30% sustained throughput drop)
+- `kv_comparison` — Benchmark 3; FP16 vs int4 KV including `energy_dequant_joules`
+- `orchestration` — Benchmark 4; CPU orchestration energy vs ANE
+
+Each mode must emit raw `powermetrics` log + JSONL per `IPJ_Measurement_Protocol_Alalā.md` §2.1–§2.3.
 
 ## Docs
 

@@ -89,6 +89,17 @@ All benchmarks must produce structured JSONL logs (see `IPJ_Measurement_Protocol
 
 Harness target: `harness/m4_energy_harness.py` (Phase 0 implementation).
 
+### Harness ↔ Protocol Mapping
+
+| `--mode` | Protocol section | Primary outputs |
+|----------|------------------|-----------------|
+| `thermal_baseline` | IPJ §2.1, Benchmark 1 | `sustained_power_w`, thermal curve, safe envelope |
+| `sram_cliff` | IPJ §2.2, Benchmark 2 | `L_cliff`, per-context JSONL + powermetrics |
+| `kv_comparison` | IPJ §2.1 denominator, Benchmark 3 | `energy_dequant_joules`, int4 vs FP16 IPJ delta |
+| `orchestration` | IPJ §2.1, Benchmark 4 | `energy_cpu_orchestration_joules`, ANE vs CPU split |
+
+See `How_to_Run_First_Micro_Benchmark_on_M4_Alalā.md` for exact commands.
+
 ## Success Gate for Phase 0
 
 By the end of Phase 0 we must have **measured M4 numbers** (not estimates):

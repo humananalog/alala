@@ -1,6 +1,6 @@
 # IPJ Measurement Protocol — Alalā
 
-**Version**: 1.1  
+**Version**: 1.2  
 **Purpose**: Define how Intelligence per Joule (IPJ) is measured, logged, and used as a gating criterion on **Mac Mini M4 24 GB** physical hardware.
 
 **Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
@@ -26,6 +26,64 @@ Where:
 4. **Efficiency** (tokens per joule, latency, etc.)
 
 Each dimension is scored on a 0–1 scale and combined with weights that can evolve over time (initially conservative).
+
+## 2.1 Phase 0 Operational Definition (Executable)
+
+For Phase 0 micro-benchmarks on **physical Mac Mini M4 24 GB**, IPJ is computed as:
+
+$$
+\text{IPJ}_{\text{phase0}} = \frac{U_{\text{phase0}}(\text{task})}{J_{\text{measured}}}
+$$
+
+Where:
+
+| Term | Operational meaning on M4 |
+|------|---------------------------|
+| \( U_{\text{phase0}}(\text{task}) \) | **Useful cognitive work completed** — e.g. tokens generated that pass a fixed quality/correctness threshold, or successful completion of a named micro-benchmark (thermal baseline, SRAM cliff sweep, KV comparison, orchestration profile) |
+| \( J_{\text{measured}} \) | **Total joules** integrated from `powermetrics` (CPU + GPU + ANE domains) over the measured interval, on the real M4 under controlled sustained thermal conditions (idle 10+ min before load; run until steady state or safe duration cap) |
+
+**Phase 0 simplification**: For decode benchmarks, \( U_{\text{phase0}} = \text{tokens\_generated} \times q \) where \( q \in [0,1] \) is a fixed quality pass rate (default \( q = 1 \) for deterministic micro-benchmark kernels with known-good output). For non-token benchmarks, \( U_{\text{phase0}} = 1 \) per successful benchmark completion.
+
+**Denominator decomposition** (required where applicable):
+
+```text
+J_measured = J_ane + J_cpu_orchestration + J_dequant + J_other
+```
+
+- `J_dequant`: incremental joules of int4/int8 KV dequant path vs FP16 baseline at same context (Benchmark 3)
+- `J_cpu_orchestration`: CPU domain joules during graph dispatch, Python agent loop, token bookkeeping minus attributed ANE idle gaps (Benchmark 4)
+
+**Invalid without artifacts**: No IPJ\(_{phase0}\) value may be published without:
+1. Raw `powermetrics` log file (`logs/<experiment_id>.powermetrics.txt`)
+2. Thermal record: `temp_start_c`, `temp_steady_state_c`, `time_to_throttle_s` (or null), `sustained_power_w`
+3. JSONL row per `IPJ_Measurement_Protocol_Alalā.md` §3.4
+
+### 2.2 SRAM Cliff Detection (Phase 0)
+
+Methodology (Benchmark 2):
+1. Fix model, batch size = 1, ANE-first routing.
+2. Sweep context length \( L \in \{512, 1024, 2048, 4096, 8192, \ldots\} \).
+3. At each \( L \), record **sustained** `tokens_per_second_sustained` at thermal steady state.
+4. **SRAM cliff** = smallest \( L \) where sustained throughput drops ≥30% vs. previous step **and** ANE utilization drops or unified-memory bandwidth proxy rises.
+
+Document cliff \( L_{\text{cliff}} \) in JSONL and Program Board.
+
+### 2.3 Harness Execution (`m4_energy_harness.py`)
+
+The protocol maps directly to harness modes (see `How_to_Run_First_Micro_Benchmark_on_M4_Alalā.md`):
+
+| Harness `--mode` | Benchmark | IPJ numerator | Required logs |
+|------------------|-----------|---------------|---------------|
+| `thermal_baseline` | 1 | 1 (successful run) | powermetrics 1 Hz; thermal curve |
+| `sram_cliff` | 2 | tokens × q per context step | per-step powermetrics + cliff detection |
+| `kv_comparison` | 3 | tokens × q; FP16 vs int4 delta | `energy_dequant_joules` delta |
+| `orchestration` | 4 | tokens × q or op count | `energy_cpu_orchestration_joules` |
+
+Harness responsibilities (implementation spec):
+- Spawn `powermetrics` subprocess; write raw log to `logs/<experiment_id>.powermetrics.txt`
+- Emit one JSONL summary line per run to `logs/<experiment_id>.jsonl`
+- Abort if package temperature exceeds configurable safe sustained threshold (default: human-set on first thermal baseline)
+- Never run on non-M4 hosts (detect Apple Silicon + 24 GB)
 
 ## 3. Measurement Infrastructure (M4)
 
