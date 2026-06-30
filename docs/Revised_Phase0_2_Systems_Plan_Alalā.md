@@ -15,7 +15,9 @@ We follow an "xAI-style" low-level optimization mindset, adapted to the realitie
 
 ## Phase 0: Characterization (Current)
 
-**Focus**: Understand the actual behavior of the M4 under realistic workloads.
+**Focus**: Understand actual Mac Mini M4 24 GB behavior under realistic ANE-first workloads.
+
+**Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
 
 **Key Activities**:
 - Thermal and power baseline

@@ -1,7 +1,9 @@
 # Alalā Experimentation Framework
 
-**Version**: 1.0  
-**Purpose**: Standard way to design, run, and evaluate experiments.
+**Version**: 1.1  
+**Purpose**: Standard way to design, run, and evaluate experiments on physical Mac Mini M4 24 GB.
+
+**Execution constraint**: All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
 
 ## Experiment Structure
 
@@ -30,11 +32,10 @@ Every experiment should contain:
 
 ## Logging Standard
 
-All experiments must produce structured logs (JSONL) with at minimum:
-- experiment_id
-- timestamp
-- hypothesis
-- key metrics (IPJ, utilization, energy, tokens/s, temperature, etc.)
+All experiments must produce structured logs (JSONL) per `IPJ_Measurement_Protocol_Alalā.md` §3.4 with at minimum:
+- experiment_id, timestamp, hypothesis
+- key metrics: sustained IPJ, ANE utilization, energy breakdown, tokens/s, thermal headroom
+- `powermetrics_log_path` (required — no IPJ without raw log)
 - before/after comparison (when applicable)
 - notes / anomalies
 
