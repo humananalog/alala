@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/alala-img.jpg" alt="Alalā — Hardware-Aware Self-Improving AI on M4" width="100%">
+</p>
+
 # Alalā – Hardware-Aware Self-Improving AI on M4
 
 **Goal**: Build an open-source system capable of effective GLM-5.2 level intelligence while maximizing **Intelligence per Joule** on a Mac Mini M4 24GB.
