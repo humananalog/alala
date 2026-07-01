@@ -1,0 +1,224 @@
+"""Stateful decode loops for Phase 1 MLX and Core ML backends."""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+
+NUM_LAYERS = 24
+KV_HEADS = 2
+HEAD_DIM = 64
+DEFAULT_DECODE_PT = Path("models/qwen2.5-0.5b-decode-kv.pt")
+
+
+@dataclass
+class DecodeRunResult:
+    context_length: int
+    tokens_generated: int
+    tokens_per_second: float
+    tokens_per_second_sustained: float
+    peak_memory_gb: float | None
+    kv_cache_active: bool
+    backend: str
+    decode_runtime: str | None = None
+
+
+def _greedy_token(logits: np.ndarray) -> int:
+    flat = logits.reshape(-1)
+    return int(flat.argmax())
+
+
+def run_mlx_decode_loop(
+    runner,
+    *,
+    context_length: int,
+    duration_s: int,
+    steady_window_s: int,
+    decode_tokens: int,
+) -> DecodeRunResult:
+    """Real MLX autoregressive decode via harness DecodeRunner (KV inside mlx_lm)."""
+    result = runner.run_context_step(
+        context_length=context_length,
+        duration_s=duration_s,
+        steady_window_s=steady_window_s,
+        decode_tokens=decode_tokens,
+    )
+    return DecodeRunResult(
+        context_length=context_length,
+        tokens_generated=result.tokens_generated,
+        tokens_per_second=result.tokens_per_second,
+        tokens_per_second_sustained=result.tokens_per_second_sustained,
+        peak_memory_gb=result.peak_memory_gb,
+        kv_cache_active=True,
+        backend="mlx",
+        decode_runtime="mlx_lm",
+    )
+
+
+def _resolve_decode_backend(decode_path: Path, decode_pt_path: Path | None):
+    """Prefer Core ML decode mlpackage; fall back to TorchScript .pt."""
+    if decode_path.exists():
+        import coremltools as ct
+
+        return "coreml", ct.models.MLModel(str(decode_path), compute_units=ct.ComputeUnit.ALL), None
+
+    pt_path = decode_pt_path or DEFAULT_DECODE_PT
+    if pt_path.exists():
+        import torch
+
+        return "torchscript", torch.jit.load(str(pt_path)).eval(), torch
+
+    raise RuntimeError(
+        f"No decode artifact found. Expected {decode_path} or {pt_path}. "
+        "Run: phase1/.venv/bin/python phase1/coreml_kv_convert.py"
+    )
+
+
+def run_coreml_decode_loop(
+    *,
+    prefill_path: Path,
+    decode_path: Path,
+    context_length: int,
+    max_ctx: int,
+    duration_s: int,
+    steady_window_s: int,
+    decode_tokens: int,
+    decode_pt_path: Path | None = None,
+) -> DecodeRunResult:
+    """Autoregressive decode with explicit KV cache hand-off between steps.
+
+    1. Prefill (Core ML): prompt → logits, keyCache, valueCache
+    2. Decode loop: feed (token, caches, cacheSeqLen) → updated caches + logits
+       Uses Core ML decode mlpackage when available, else TorchScript .pt (CPU/MPS).
+    3. Greedy argmax on logits each step
+    """
+    try:
+        import coremltools as ct
+    except ImportError as exc:
+        raise RuntimeError("coremltools required for Core ML decode") from exc
+
+    if context_length > max_ctx:
+        raise ValueError(f"context_length {context_length} > max_ctx {max_ctx}")
+
+    prefill_model = ct.models.MLModel(str(prefill_path), compute_units=ct.ComputeUnit.ALL)
+    decode_runtime, decode_runner, torch = _resolve_decode_backend(decode_path, decode_pt_path)
+
+    rng = np.random.default_rng(context_length)
+    prompt = np.zeros((1, max_ctx), dtype=np.int32)
+    prompt[0, :context_length] = rng.integers(1, 5000, size=context_length, dtype=np.int32)
+
+    prefill_out = prefill_model.predict({"inputIds": prompt})
+    key_cache = np.array(prefill_out["keyCache"], dtype=np.float16)
+    value_cache = np.array(prefill_out["valueCache"], dtype=np.float16)
+    cache_seq_len = context_length
+
+    logits = np.array(prefill_out["logits"])
+    next_token = _greedy_token(logits[:, context_length - 1 : context_length, :])
+
+    start = time.monotonic()
+    steady_start = start + max(0, duration_s - steady_window_s)
+    total_tokens = 0
+    steady_tokens = 0
+
+    while time.monotonic() - start < duration_s:
+        # Re-prefill when KV is full so sustained decode can run for the full benchmark window.
+        if cache_seq_len >= max_ctx:
+            prefill_out = prefill_model.predict({"inputIds": prompt})
+            key_cache = np.array(prefill_out["keyCache"], dtype=np.float16)
+            value_cache = np.array(prefill_out["valueCache"], dtype=np.float16)
+            cache_seq_len = context_length
+            logits = np.array(prefill_out["logits"])
+            next_token = _greedy_token(logits[:, context_length - 1 : context_length, :])
+            continue
+
+        if decode_runtime == "coreml":
+            decode_out = decode_runner.predict(
+                {
+                    "inputIds": np.array([[next_token]], dtype=np.int32),
+                    "keyCache": key_cache,
+                    "valueCache": value_cache,
+                    "cacheSeqLen": np.array([cache_seq_len], dtype=np.int32),
+                }
+            )
+            key_cache = np.array(decode_out["keyCache"], dtype=np.float16)
+            value_cache = np.array(decode_out["valueCache"], dtype=np.float16)
+            step_logits = np.array(decode_out["logits"])
+        else:
+            import torch as th
+
+            with th.no_grad():
+                out = decode_runner(
+                    th.tensor([[next_token]], dtype=th.int32),
+                    th.from_numpy(key_cache),
+                    th.from_numpy(value_cache),
+                    th.tensor([cache_seq_len], dtype=th.int32),
+                )
+            step_logits = out[0].numpy()
+            key_cache = out[1].numpy().astype(np.float16)
+            value_cache = out[2].numpy().astype(np.float16)
+
+        cache_seq_len += 1
+        total_tokens += 1
+        if time.monotonic() >= steady_start:
+            steady_tokens += 1
+
+        next_token = _greedy_token(step_logits)
+
+    elapsed = time.monotonic() - start
+    steady_elapsed = min(steady_window_s, elapsed)
+    tps = total_tokens / elapsed if elapsed > 0 else 0.0
+    tps_sustained = steady_tokens / steady_elapsed if steady_elapsed > 0 else 0.0
+
+    return DecodeRunResult(
+        context_length=context_length,
+        tokens_generated=total_tokens,
+        tokens_per_second=tps,
+        tokens_per_second_sustained=tps_sustained,
+        peak_memory_gb=None,
+        kv_cache_active=True,
+        backend="coreml",
+        decode_runtime=decode_runtime,
+    )
+
+
+def run_coreml_prefill_proxy(
+    model_path: Path,
+    *,
+    context_length: int,
+    trace_context_size: int,
+    duration_s: int,
+    steady_window_s: int,
+) -> DecodeRunResult:
+    """Legacy prefill-only proxy (no KV)."""
+    import coremltools as ct
+
+    mlmodel = ct.models.MLModel(str(model_path), compute_units=ct.ComputeUnit.ALL)
+    shape = (1, trace_context_size)
+    rng = np.random.default_rng(context_length)
+    input_ids = np.zeros(shape, dtype=np.int32)
+    input_ids[0, :context_length] = rng.integers(1, 1000, size=context_length, dtype=np.int32)
+
+    start = time.monotonic()
+    steady_start = start + max(0, duration_s - steady_window_s)
+    total = steady = 0
+    while time.monotonic() - start < duration_s:
+        mlmodel.predict({"inputIds": input_ids})
+        total += 1
+        if time.monotonic() >= steady_start:
+            steady += 1
+
+    elapsed = time.monotonic() - start
+    steady_elapsed = min(steady_window_s, elapsed)
+    return DecodeRunResult(
+        context_length=context_length,
+        tokens_generated=total,
+        tokens_per_second=total / elapsed if elapsed else 0.0,
+        tokens_per_second_sustained=steady / steady_elapsed if steady_elapsed else 0.0,
+        peak_memory_gb=None,
+        kv_cache_active=False,
+        backend="coreml",
+        decode_runtime="prefill_proxy",
+    )

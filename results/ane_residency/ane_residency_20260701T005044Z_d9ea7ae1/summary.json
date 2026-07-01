@@ -1,0 +1,23 @@
+{
+  "abort_reason": null,
+  "aborted": false,
+  "ane_utilization_proxy_by_context": {
+    "512": null
+  },
+  "backend": "mlx",
+  "contexts_tested": [
+    512
+  ],
+  "decode_mode": true,
+  "experiment_id": "ane_residency_20260701T005044Z_d9ea7ae1_summary",
+  "hardware": "Apple M4",
+  "kv_cache_active": true,
+  "model_path": "mlx-community/Qwen2.5-0.5B-Instruct-4bit",
+  "powermetrics_log_path": null,
+  "run_id": "ane_residency_20260701T005044Z_d9ea7ae1",
+  "task_type": "ane_residency_summary",
+  "timestamp": "2026-07-01T00:51:53Z",
+  "tokens_per_second_sustained_by_context": {
+    "512": 106.667
+  }
+}

@@ -48,6 +48,25 @@ Success gate: Measurable ANE residency + sustained IPJ within 10% of current MLX
 
 **Next:** stateful Core ML decode + KV cache (Apple on-device Llama pattern); re-benchmark IPJ and ANE at ctx 512/1024.
 
+## KV Cache Decode Results (2026-07-01)
+
+**Artifacts:** `phase1/kv_decode.py`, `phase1/coreml_kv_convert.py`, `models/qwen2.5-0.5b-prefill-kv.mlpackage`, `models/qwen2.5-0.5b-decode-kv.pt`  
+**Benchmark:** `phase1/ane_residency_benchmark.py --decode` (88 °C threshold, 60 s step / 30 s steady)
+
+| Run | Backend | ctx | Sust. tok/s | ANE proxy | Decode runtime | Notes |
+|-----|---------|-----|-------------|-----------|----------------|-------|
+| `ane_residency_20260701T005044Z_d9ea7ae1` | MLX 0.5B | 512 | **106.7** | ~0% | mlx_lm KV | Baseline |
+| `ane_residency_20260701T005414Z_011715de` | MLX 0.5B | 1024 | **57.6** | ~4% | mlx_lm KV | Thermal OK @ 82 °C |
+| `ane_residency_20260701T005247Z_b8d6539e` | Core ML | 512 | **35.0** | 0.3% | TorchScript fallback | Prefill on Core ML ANE; decode on CPU TS |
+| `ane_residency_20260701T005431Z_c4529935` | Core ML | 1024 | — | — | — | **OOM** on prefill-kv re-prefill (GPU) |
+
+**vs prefill proxy (4.2 t/s @ ctx 512):** KV decode path is **~8× faster** (35 t/s).  
+**vs MLX @ ctx 512:** Core ML hybrid is **~3× slower** (within 3–5× gate) but ANE attribution collapses because decode `.mlpackage` conversion is blocked.
+
+**Blocker:** `coremltools.convert(TorchScript)` fails with `No matching select or slice` on dynamic KV cache index writes. TorchScript runtime works; Core ML decode package still needed for ANE residency during sustained decode.
+
+**Next:** unblock Core ML decode conversion (MLState / export-friendly cache write), re-run ANE + IPJ at ctx 512; investigate ctx 1024 OOM on prefill-kv recycle.
+
 ## Candidate Seeding Models (ranked for first try)
 1. Qwen2.5-0.5B-Instruct (strong instruction following, good convertibility)
 2. Phi-3.5-mini / Phi-3-mini-128k (excellent reasoning per size)

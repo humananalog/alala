@@ -200,6 +200,21 @@ None for Phase 0 completion.
 
 **Decision**: Core ML path achieves real ANE energy attribution (38% @ ctx 512) vs ~0% MLX GPU. Throughput/IPJ not yet competitive — prefill-only proxy + no KV decode. Next: stateful Core ML decode + IPJ within 10% gate.
 
+### KV Cache Decode Results (2026-07-01)
+
+Stateful decode path landed in `phase1/kv_decode.py` + `--decode` on `ane_residency_benchmark.py`.
+
+| Run | Backend | ctx | Sust. t/s | ANE proxy | Temp steady | Notes |
+|-----|---------|-----|-----------|-----------|-------------|-------|
+| `ane_residency_20260701T005044Z_d9ea7ae1` | MLX | 512 | **106.7** | ~0% | 79.8°C | Real mlx_lm KV decode |
+| `ane_residency_20260701T005414Z_011715de` | MLX | 1024 | **57.6** | ~4% | 82.1°C | |
+| `ane_residency_20260701T005247Z_b8d6539e` | Core ML | 512 | **35.0** | 0.3% | 83.4°C | Prefill Core ML + TorchScript decode (KV active) |
+| `ane_residency_20260701T005431Z_c4529935` | Core ML | 1024 | — | — | — | GPU OOM on prefill-kv recycle |
+
+**Decision:** KV hand-off works end-to-end; sustained Core ML decode throughput **35 t/s @ ctx 512** (~8× prefill proxy, ~3× slower than MLX — inside 3–5× band). ANE proxy **not retained** during decode because Core ML decode `.mlpackage` convert is blocked (`No matching select or slice`); decode runs via `qwen2.5-0.5b-decode-kv.pt` on CPU.
+
+**Gaps:** (1) Ship Core ML decode package for ANE residency during decode; (2) ctx 1024 OOM on full prefill-kv recycle; (3) IPJ comparison once Core ML decode path is fully on ANE.
+
 ### Success Metrics (First Experiment)
 
 | Metric | Target | Status (2026-07-01) |

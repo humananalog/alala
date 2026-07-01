@@ -11,7 +11,14 @@ This script compares MLX (GPU baseline) vs Core ML (.mlpackage) at context 512 a
 logging powermetrics + Phase 0-compatible JSONL for IPJ gating.
 
 Examples:
-    python phase1/ane_residency_benchmark.py --backend mlx
+    # MLX real decode (KV inside mlx_lm)
+    python phase1/ane_residency_benchmark.py --backend mlx --decode --context 512,1024
+
+    # Core ML stateful decode with explicit KV cache hand-off
+    python phase1/ane_residency_benchmark.py \\
+        --backend coreml --decode --context 512,1024
+
+    # Legacy prefill-only proxy (no KV)
     python phase1/ane_residency_benchmark.py \\
         --backend coreml --model models/qwen2.5-0.5b-ane.mlpackage --context 512,1024
 """
@@ -33,9 +40,17 @@ from typing import Any
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+PHASE1_DIR = REPO_ROOT / "phase1"
 HARNESS_DIR = REPO_ROOT / "harness"
+MODELS_DIR = REPO_ROOT / "models"
 sys.path.insert(0, str(HARNESS_DIR))
+sys.path.insert(0, str(PHASE1_DIR))
 
+from kv_decode import (  # noqa: E402
+    run_coreml_decode_loop,
+    run_coreml_prefill_proxy,
+    run_mlx_decode_loop,
+)
 from decode_client import DecodeRunner  # noqa: E402
 from env import LOGS_DIR, RESULTS_DIR  # noqa: E402
 from errors import HarnessError  # noqa: E402
@@ -50,13 +65,18 @@ from powermetrics_log import parse_powermetrics_file  # noqa: E402
 
 DEFAULT_CONTEXTS = (512, 1024)
 DEFAULT_TEMP_THRESHOLD_C = 85.0
+DEFAULT_DECODE_TEMP_THRESHOLD_C = 88.0
 DEFAULT_STEP_DURATION_S = 60
 DEFAULT_STEADY_WINDOW_S = 30
 DEFAULT_DECODE_TOKENS = 32
 DEFAULT_COOLDOWN_S = 60
 DEFAULT_INTERVAL_MS = 1000
 DEFAULT_MLX_MODEL = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
-DEFAULT_COREML_CONTEXT_SIZE = 512
+DEFAULT_COREML_CONTEXT_SIZE = 1024
+DEFAULT_COREML_PREFILL_KV = MODELS_DIR / "qwen2.5-0.5b-prefill-kv.mlpackage"
+DEFAULT_COREML_DECODE_KV = MODELS_DIR / "qwen2.5-0.5b-decode-kv.mlpackage"
+DEFAULT_COREML_DECODE_PT = MODELS_DIR / "qwen2.5-0.5b-decode-kv.pt"
+DEFAULT_COREML_PREFILL_ONLY = MODELS_DIR / "qwen2.5-0.5b-ane.mlpackage"
 
 PHASE0_MLX_BASELINE: dict[int, dict[str, Any]] = {
     512: {"tokens_per_second_sustained": 9.65, "ane_utilization_pct": 0.0},
@@ -85,6 +105,9 @@ class StepMetrics:
     thermal_warning: str | None
     experiment_id: str
     powermetrics_log_path: str
+    decode_mode: bool
+    kv_cache_active: bool
+    decode_runtime: str | None
 
 
 def _mean(values: list[float]) -> float | None:
@@ -115,66 +138,104 @@ def _steady_thermal_warning(temp_steady: float | None, threshold_c: float) -> st
     return None
 
 
-def run_mlx_step(
-    runner: DecodeRunner,
+def resolve_coreml_paths(args: argparse.Namespace) -> tuple[Path | None, Path | None, Path | None, Path | None, str]:
+    """Return (prefill_kv, decode_kv, decode_pt, prefill_only, model_label) for Core ML backend."""
+    if args.decode:
+        prefill_kv = Path(args.coreml_prefill_kv) if args.coreml_prefill_kv else DEFAULT_COREML_PREFILL_KV
+        decode_kv = Path(args.coreml_decode_kv) if args.coreml_decode_kv else DEFAULT_COREML_DECODE_KV
+        decode_pt = Path(args.coreml_decode_pt) if args.coreml_decode_pt else DEFAULT_COREML_DECODE_PT
+        if not prefill_kv.exists():
+            raise HarnessError(
+                f"Core ML prefill KV model not found: {prefill_kv}. "
+                "Run: phase1/.venv/bin/python phase1/coreml_kv_convert.py"
+            )
+        if not decode_kv.exists() and not decode_pt.exists():
+            raise HarnessError(
+                f"Core ML decode artifact not found: {decode_kv} or {decode_pt}. "
+                "Run: phase1/.venv/bin/python phase1/coreml_kv_convert.py"
+            )
+        decode_label = decode_kv.name if decode_kv.exists() else decode_pt.name
+        label = f"{prefill_kv.name}+{decode_label}"
+        return prefill_kv, decode_kv, decode_pt, None, label
+
+    model_path = Path(args.model) if args.model else DEFAULT_COREML_PREFILL_ONLY
+    if not model_path.exists():
+        raise HarnessError(f"Core ML model not found: {model_path}")
+    return None, None, None, model_path, str(model_path)
+
+
+def run_workload(
     *,
+    backend: str,
+    decode_mode: bool,
+    mlx_runner: DecodeRunner | None,
+    prefill_kv_path: Path | None,
+    decode_kv_path: Path | None,
+    decode_pt_path: Path | None,
+    prefill_only_path: Path | None,
     context_length: int,
+    coreml_max_ctx: int,
     duration_s: int,
     steady_window_s: int,
     decode_tokens: int,
-) -> tuple[int, float, float, float]:
-    result = runner.run_context_step(
-        context_length=context_length,
-        duration_s=duration_s,
-        steady_window_s=steady_window_s,
-        decode_tokens=decode_tokens,
-    )
+) -> tuple[int, float, float, float | None, bool, str | None]:
+    """Run one benchmark step; returns tokens, tps, tps_sustained, peak_mem, kv_cache_active, decode_runtime."""
+    if backend == "mlx":
+        assert mlx_runner is not None
+        if decode_mode:
+            result = run_mlx_decode_loop(
+                mlx_runner,
+                context_length=context_length,
+                duration_s=duration_s,
+                steady_window_s=steady_window_s,
+                decode_tokens=decode_tokens,
+            )
+        else:
+            result = run_mlx_decode_loop(
+                mlx_runner,
+                context_length=context_length,
+                duration_s=duration_s,
+                steady_window_s=steady_window_s,
+                decode_tokens=decode_tokens,
+            )
+        return (
+            result.tokens_generated,
+            result.tokens_per_second,
+            result.tokens_per_second_sustained,
+            result.peak_memory_gb,
+            result.kv_cache_active,
+            result.decode_runtime,
+        )
+
+    if decode_mode:
+        assert prefill_kv_path is not None
+        result = run_coreml_decode_loop(
+            prefill_path=prefill_kv_path,
+            decode_path=decode_kv_path or DEFAULT_COREML_DECODE_KV,
+            decode_pt_path=decode_pt_path,
+            context_length=context_length,
+            max_ctx=coreml_max_ctx,
+            duration_s=duration_s,
+            steady_window_s=steady_window_s,
+            decode_tokens=decode_tokens,
+        )
+    else:
+        assert prefill_only_path is not None
+        result = run_coreml_prefill_proxy(
+            prefill_only_path,
+            context_length=context_length,
+            trace_context_size=coreml_max_ctx,
+            duration_s=duration_s,
+            steady_window_s=steady_window_s,
+        )
     return (
         result.tokens_generated,
         result.tokens_per_second,
         result.tokens_per_second_sustained,
         result.peak_memory_gb,
+        result.kv_cache_active,
+        result.decode_runtime,
     )
-
-
-def run_coreml_step(
-    model_path: Path,
-    *,
-    context_length: int,
-    trace_context_size: int,
-    duration_s: int,
-    steady_window_s: int,
-) -> tuple[int, float, float, None]:
-    """Core ML prefill proxy loop (v1) — exercises graph while powermetrics captures ANE domain."""
-    try:
-        import coremltools as ct
-    except ImportError as exc:
-        raise HarnessError("coremltools required for --backend coreml") from exc
-
-    if context_length > trace_context_size:
-        raise HarnessError(
-            f"context {context_length} > Core ML trace size {trace_context_size}; reconvert with larger --context-size"
-        )
-
-    mlmodel = ct.models.MLModel(str(model_path), compute_units=ct.ComputeUnit.ALL)
-    shape = (1, trace_context_size)
-    rng = np.random.default_rng(context_length)
-    input_ids = np.zeros(shape, dtype=np.int32)
-    input_ids[0, :context_length] = rng.integers(1, 1000, size=context_length, dtype=np.int32)
-    start = time.monotonic()
-    steady_start = start + max(0, duration_s - steady_window_s)
-    total = steady = 0
-    while time.monotonic() - start < duration_s:
-        mlmodel.predict({"inputIds": input_ids})
-        total += 1
-        if time.monotonic() >= steady_start:
-            steady += 1
-
-    elapsed = time.monotonic() - start
-    steady_elapsed = min(steady_window_s, elapsed)
-    tps = total / elapsed if elapsed else 0.0
-    tps_sustained = steady / steady_elapsed if steady_elapsed else 0.0
-    return total, tps, tps_sustained, None
 
 
 def build_step_record(
@@ -228,8 +289,13 @@ def build_step_record(
         "hca_impact": None,
         "hardware": hardware,
         "delta_tps_sustained_pct_vs_phase0": delta_tps,
+        "decode_mode": step.decode_mode,
+        "kv_cache_active": step.kv_cache_active,
+        "decode_runtime": step.decode_runtime,
         "notes": (
             f"Phase 1 ANE residency; backend={step.backend}; "
+            f"decode_mode={step.decode_mode}; kv_cache_active={step.kv_cache_active}; "
+            f"decode_runtime={step.decode_runtime}; "
             "ane_utilization_proxy = ane_energy / (cpu+gpu+ane) from powermetrics."
         ),
         "powermetrics_log_path": step.powermetrics_log_path,
@@ -239,8 +305,10 @@ def build_step_record(
 def print_summary(steps: list[StepMetrics], aborted: bool, abort_reason: str | None) -> None:
     print("\n=== ANE Residency Summary ===")
     for step in steps:
+        mode = "decode+kv" if step.kv_cache_active else ("decode" if step.decode_mode else "prefill_proxy")
+        runtime = f" runtime={step.decode_runtime}" if step.decode_runtime else ""
         print(
-            f"  ctx={step.context_length} backend={step.backend} "
+            f"  ctx={step.context_length} backend={step.backend} mode={mode}{runtime} "
             f"tps_peak={step.tokens_per_second:.2f} tps_sustained={step.tokens_per_second_sustained:.2f} "
             f"ane_proxy={step.ane_utilization_proxy}% temp_steady={step.temp_steady_state_c}C"
         )
@@ -262,14 +330,16 @@ def run_benchmark(args: argparse.Namespace) -> int:
     contexts = parse_contexts(args.context)
     hardware = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"], text=True).strip()
 
+    prefill_kv_path: Path | None = None
+    decode_kv_path: Path | None = None
+    decode_pt_path: Path | None = None
+    prefill_only_path: Path | None = None
     if backend == "coreml":
-        model_path = Path(args.model)
-        if not model_path.exists():
-            raise HarnessError(f"Core ML model not found: {model_path}")
-        model_label = str(model_path)
+        prefill_kv_path, decode_kv_path, decode_pt_path, prefill_only_path, model_label = resolve_coreml_paths(
+            args
+        )
     else:
         model_label = args.model or DEFAULT_MLX_MODEL
-        model_path = None
 
     run_id = f"ane_residency_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:8]}"
     jsonl_path = LOGS_DIR / f"{run_id}.jsonl"
@@ -277,7 +347,10 @@ def run_benchmark(args: argparse.Namespace) -> int:
     result_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"[alala] run_id={run_id}")
-    print(f"[alala] backend={backend} model={model_label} contexts={contexts}")
+    print(
+        f"[alala] backend={backend} decode={args.decode} model={model_label} "
+        f"contexts={contexts} temp_threshold={args.temp_threshold}C"
+    )
 
     mlx_runner = DecodeRunner(model_label) if backend == "mlx" else None
     steps: list[StepMetrics] = []
@@ -301,24 +374,20 @@ def run_benchmark(args: argparse.Namespace) -> int:
         session = PowerMetricsSession(pm_path, interval_ms=args.interval_ms)
         session.start()
         try:
-            if backend == "mlx":
-                assert mlx_runner is not None
-                tokens, tps, tps_sustained, peak_mem = run_mlx_step(
-                    mlx_runner,
-                    context_length=context_length,
-                    duration_s=args.step_duration,
-                    steady_window_s=args.steady_window,
-                    decode_tokens=args.decode_tokens,
-                )
-            else:
-                assert model_path is not None
-                tokens, tps, tps_sustained, peak_mem = run_coreml_step(
-                    model_path,
-                    context_length=context_length,
-                    trace_context_size=args.coreml_context_size,
-                    duration_s=args.step_duration,
-                    steady_window_s=args.steady_window,
-                )
+            tokens, tps, tps_sustained, peak_mem, kv_active, decode_runtime = run_workload(
+                backend=backend,
+                decode_mode=args.decode,
+                mlx_runner=mlx_runner,
+                prefill_kv_path=prefill_kv_path,
+                decode_kv_path=decode_kv_path,
+                decode_pt_path=decode_pt_path,
+                prefill_only_path=prefill_only_path,
+                context_length=context_length,
+                coreml_max_ctx=args.coreml_context_size,
+                duration_s=args.step_duration,
+                steady_window_s=args.steady_window,
+                decode_tokens=args.decode_tokens,
+            )
         finally:
             session.stop()
 
@@ -360,6 +429,9 @@ def run_benchmark(args: argparse.Namespace) -> int:
             thermal_warning=thermal_warning,
             experiment_id=step_id,
             powermetrics_log_path=str(pm_path.relative_to(REPO_ROOT)),
+            decode_mode=args.decode,
+            kv_cache_active=kv_active,
+            decode_runtime=decode_runtime,
         )
         steps.append(step)
         write_jsonl(jsonl_path, build_step_record(run_id=run_id, step=step, hardware=hardware, timestamp=utc_now_iso()))
@@ -391,6 +463,8 @@ def run_benchmark(args: argparse.Namespace) -> int:
         },
         "aborted": aborted,
         "abort_reason": abort_reason,
+        "decode_mode": args.decode,
+        "kv_cache_active": all(s.kv_cache_active for s in steps) if steps else False,
         "hardware": hardware,
         "powermetrics_log_path": None,
     }
@@ -407,12 +481,37 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Phase 1 ANE residency benchmark.")
     parser.add_argument("--backend", choices=("mlx", "coreml"), default="mlx")
     parser.add_argument(
+        "--decode",
+        action="store_true",
+        help="Stateful autoregressive decode with KV cache (vs prefill-only proxy for coreml)",
+    )
+    parser.add_argument(
         "--model",
         default=None,
-        help="MLX HF id or Core ML .mlpackage path (required for coreml backend)",
+        help="MLX HF id, or Core ML prefill-only .mlpackage (legacy proxy without --decode)",
+    )
+    parser.add_argument(
+        "--coreml-prefill-kv",
+        default=None,
+        help="Prefill KV .mlpackage for --decode (default: models/qwen2.5-0.5b-prefill-kv.mlpackage)",
+    )
+    parser.add_argument(
+        "--coreml-decode-kv",
+        default=None,
+        help="Decode KV .mlpackage for --decode (default: models/qwen2.5-0.5b-decode-kv.mlpackage)",
+    )
+    parser.add_argument(
+        "--coreml-decode-pt",
+        default=None,
+        help="TorchScript decode fallback .pt (default: models/qwen2.5-0.5b-decode-kv.pt)",
     )
     parser.add_argument("--context", default="512,1024", help="Comma-separated context lengths")
-    parser.add_argument("--coreml-context-size", type=int, default=DEFAULT_COREML_CONTEXT_SIZE)
+    parser.add_argument(
+        "--coreml-context-size",
+        type=int,
+        default=DEFAULT_COREML_CONTEXT_SIZE,
+        help="Max traced context / KV cache length for Core ML models",
+    )
     parser.add_argument("--step-duration", type=int, default=DEFAULT_STEP_DURATION_S)
     parser.add_argument("--steady-window", type=int, default=DEFAULT_STEADY_WINDOW_S)
     parser.add_argument("--decode-tokens", type=int, default=DEFAULT_DECODE_TOKENS)
@@ -424,9 +523,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
-    if args.backend == "coreml" and not args.model:
-        print("[alala] ERROR: --model required for coreml backend (.mlpackage path)", file=sys.stderr)
-        return 1
+    if args.decode and args.temp_threshold == DEFAULT_TEMP_THRESHOLD_C:
+        args.temp_threshold = DEFAULT_DECODE_TEMP_THRESHOLD_C
+    if args.backend == "coreml" and not args.decode and not args.model:
+        args.model = str(DEFAULT_COREML_PREFILL_ONLY)
     if args.backend == "mlx" and args.model is None:
         args.model = DEFAULT_MLX_MODEL
     try:
