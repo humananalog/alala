@@ -1,0 +1,24 @@
+{
+  "abort_reason": null,
+  "aborted": false,
+  "ane_utilization_proxy_by_context": {
+    "512": 2.900099200029123
+  },
+  "backend": "coreml",
+  "compute_units": "all",
+  "contexts_tested": [
+    512
+  ],
+  "decode_mode": true,
+  "experiment_id": "ane_residency_20260701T022853Z_1b69eca7_summary",
+  "hardware": "Apple M4",
+  "kv_cache_active": true,
+  "model_path": "qwen2.5-0.5b-prefill-kv.mlpackage+qwen2.5-0.5b-decode-kv-torch-export-int4.mlpackage",
+  "powermetrics_log_path": null,
+  "run_id": "ane_residency_20260701T022853Z_1b69eca7",
+  "task_type": "ane_residency_summary",
+  "timestamp": "2026-07-01T02:31:40Z",
+  "tokens_per_second_sustained_by_context": {
+    "512": 27.733
+  }
+}

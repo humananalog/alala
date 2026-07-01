@@ -1,0 +1,27 @@
+{
+  "experiments": [
+    {
+      "load_infos": [],
+      "summary": {
+        "compute_units": "all",
+        "error": "{\n    NSLocalizedDescription = \"Unable to compute the prediction using ML Program. It can be an invalid input data or broken/unsupported model.\";\n    NSUnderlyingError = \"Error Domain=com.apple.CoreML Code=0 \\\"E5RT: GPU sync execute failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory) (11)\\\" UserInfo={NSLocalizedDescription=E5RT: GPU sync execute failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory) (11)}\";\n}"
+      }
+    }
+  ],
+  "hardware": "Apple M4",
+  "instruments_instructions": [
+    "Open Instruments.app \u2192 Core ML template.",
+    "Select the qwen2.5-0.5b-decode-kv process during a 30-token decode loop.",
+    "Inspect 'Core ML Performance' and 'Neural Engine' lanes for op placement.",
+    "Compare against qwen2.5-0.5b-ane.mlpackage prefill-only proxy at ctx 512."
+  ],
+  "reference_metrics": {
+    "ane_utilization_proxy_pct": 0.11435237710644898,
+    "compute_units": "all",
+    "decode_runtime": "coreml",
+    "tokens_per_second_sustained": 7.45
+  },
+  "reference_run": "ane_residency_20260701T010929Z_830681e7",
+  "run_id": "ane_placement_profile_20260701T022642Z_261dc0d0",
+  "timestamp": "2026-07-01T02:28:44Z"
+}

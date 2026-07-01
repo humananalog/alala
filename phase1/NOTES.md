@@ -189,11 +189,52 @@ Profile run: `ane_placement_profile_20260701T020740Z_bf783c54` (`ComputeUnit.ALL
 
 If runtime ANE proxy stays &lt;5% after quant + cleanup, pivot to **hybrid architecture** (Core ML ANE prefill + optimized non-CoreML decode for throughput).
 
+### int4 weight quantization (2026-07-01)
+
+**Tool:** `phase1/coreml_quantize.py` — post-export `linear_quantize_weights` with `OpLinearQuantizerConfig(dtype='int4')`.
+
+```bash
+phase1/.venv/bin/python phase1/coreml_quantize.py \
+  --input models/qwen2.5-0.5b-decode-kv-torch-export.mlpackage \
+  --output models/qwen2.5-0.5b-decode-kv-torch-export-int4.mlpackage
+```
+
+**KV cache handling:** `linear_quantize_weights` compresses **linear layer weights only**. Activation I/O (`keyCache`, `valueCache`, `cachePosition`, `causalMask`, `logits`, `keyCacheOut`, `valueCacheOut`) remain fp16 — no special exclusion needed. `op_selector` in `OptimizationConfig` is deprecated in coremltools ≥8; global linear config suffices.
+
+**Limitations observed:**
+- `RuntimeWarning: invalid value encountered in divide` on a subset of weights during quant (likely near-zero scales); model still validates and runs.
+- Package size: **952 MB → 240 MB** (fp16 torch.export → int4).
+- Placement profile decode loop **GPU OOM** when loading prefill + int4 decode + prefill-proxy simultaneously; 60 s residency benchmark (prefill + decode only) succeeds.
+- Cleared **30 GB** `e5rt.e5bundlecache` required before quant save on disk-constrained host.
+
+### torch.export decode: fp16 vs int4 comparison (ctx 512, M4 24 GB)
+
+| Variant | ANE plan % | GPU plan % | Sust. t/s | ANE proxy | ANE J | GPU J | CPU J | Temp steady | Package |
+|---------|------------|------------|-----------|-----------|-------|-------|-------|-------------|---------|
+| torch.export fp16 | **44.8%** | 1.3% | 7.93 | 0.067% | 1.0 | 1158 | 314 | ~84°C | 952 MB |
+| **torch.export int4** | **44.1%** | 2.0% | **27.73** | **2.90%** | **31.9** | **646** | 421 | **75.2°C** | **240 MB** |
+
+Runs: fp16 profile `bf783c54`; int4 compute plan from `1b69eca7` load + 60 s benchmark `ane_residency_20260701T022853Z_1b69eca7`.
+
+**Observations:** int4 quant closes much of the planner/runtime gap — ANE proxy **43×** fp16 (0.067% → 2.9%), throughput **3.5×** (7.93 → 27.73 t/s), GPU joules **−44%**, thermal headroom improved. Compute-plan ANE fraction unchanged (~44%). Still below TorchScript 35 t/s and MLX 106 t/s; ANE proxy well under 60% gate.
+
+### Recommendation (post-int4, 2026-07-01)
+
+**Runtime ANE proxy improved meaningfully; throughput increased substantially.** Continue Core ML torch.export + int4 path:
+
+1. **Graph cleanup** — replace mask-based KV slot write (`equal`/`tile`/`mul`) with leaner update ops.
+2. **Instruments Core ML template** — confirm per-op ANE execution vs compute plan.
+3. **Quantize prefill-kv** — match decode int4 path for end-to-end bandwidth reduction.
+4. **Profile with 2-model load only** — avoid triple-model OOM in `ane_placement_profile.py`.
+
+If ANE proxy plateaus &lt;10% after graph cleanup, evaluate **hybrid** (ANE int4 prefill + optimized decode runtime) for throughput while preserving measured ANE energy on prefill.
+
 ## Tooling and commands
 
 | Script | Purpose |
 |--------|---------|
 | `coreml_kv_convert.py` | Export prefill-kv + MLState decode + `--mode decode_torch_export` |
+| `coreml_quantize.py` | Post-export int4/int8 linear weight quantization |
 | `coreml_instrumentation.py` | Load models with logged `ComputeUnit` + `MLComputePlan` |
 | `ane_residency_benchmark.py` | Full benchmark; `--compute-units`, `--profile` |
 | `ane_placement_profile.py` | Short decode profile + compute-plan JSON |
@@ -219,7 +260,8 @@ PYTHONPATH=phase1 phase1/.venv/bin/python phase1/ane_placement_profile.py \
 |--------|------|-------------|-------|
 | `ane_residency_20260701T010929Z_830681e7` | MLState decode benchmark | 7.45 t/s, 0.11% ANE | `logs/ane_residency_20260701T010929Z_830681e7*`, `results/ane_residency/ane_residency_20260701T010929Z_830681e7/` |
 | `ane_placement_profile_20260701T012500Z_e43e6053` | ANE placement profile (MLState) | 17.83 t/s, 0.41% ANE; 0% ANE compute plan | `results/ane_placement_profile/ane_placement_profile_20260701T012500Z_e43e6053/`, `logs/ane_placement_profile_all_ctx512.powermetrics.txt` |
-| `ane_placement_profile_20260701T020740Z_bf783c54` | torch.export decode profile | 7.93 t/s, 0.067% ANE proxy; **44.8% ANE compute plan** | `results/ane_placement_profile/ane_placement_profile_20260701T020740Z_bf783c54/`, `logs/ane_placement_profile_all_ctx512.powermetrics.txt` |
+| `ane_placement_profile_20260701T020740Z_bf783c54` | torch.export fp16 decode profile | 7.93 t/s, 0.067% ANE proxy; **44.8% ANE compute plan** | `results/ane_placement_profile/ane_placement_profile_20260701T020740Z_bf783c54/` |
+| `ane_residency_20260701T022853Z_1b69eca7` | torch.export **int4** decode 60 s | **27.73 t/s**, **2.90% ANE**; 44.1% ANE plan | `results/ane_residency/ane_residency_20260701T022853Z_1b69eca7/`, `logs/ane_residency_20260701T022853Z_1b69eca7_ctx512.powermetrics.txt` |
 | `ane_residency_20260701T010854Z_a164b6cc` | Failed (pre-fix OOM) | GPU OOM loading both models | `logs/ane_residency_20260701T010854Z_a164b6cc_ctx512.powermetrics.txt` |
 
 Local-only (not tracked): `models/*.mlpackage/`, `models/qwen2.5-0.5b-decode-kv.pt`.

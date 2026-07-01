@@ -12,6 +12,7 @@ Measurement and conversion tooling for Phase 1 ANE-first execution on Mac Mini M
 |------|---------|
 | `coreml_convert.py` | Prefill-only HF → Core ML (no KV; `torch.export`) |
 | `coreml_kv_convert.py` | Prefill-kv + MLState decode + `torch.export` decode (`--mode decode_torch_export`) |
+| `coreml_quantize.py` | Post-export int4/int8 linear weight quantization |
 | `kv_decode.py` | Stateful decode loops (MLX + Core ML prefill/decode hand-off) |
 | `coreml_instrumentation.py` | `ComputeUnit` loading, metadata + `MLComputePlan` logging |
 | `ane_residency_benchmark.py` | MLX vs Core ML benchmark with powermetrics + JSONL |
@@ -100,13 +101,12 @@ Run: `ane_residency_20260701T002500Z_d1b410d0`
 | MLX | mlx_lm | 512 | 106.7 | ~0% |
 | Core ML | TorchScript `.pt` | 512 | 35.0 | 0.3% |
 | Core ML | **MLState `.mlpackage`** | 512 | 7.45 | **0.11%** |
-| Core ML | **torch.export `.mlpackage`** | 512 | 7.93 | **0.067%** |
+| Core ML | torch.export fp16 | 512 | 7.93 | 0.067% |
+| Core ML | **torch.export int4** | 512 | **27.73** | **2.90%** |
 
-Runs: `ane_residency_20260701T005247Z_b8d6539e` (TorchScript), `ane_residency_20260701T010929Z_830681e7` (MLState), `ane_placement_profile_20260701T020740Z_bf783c54` (torch.export).
+Runs: `b8d6539e` (TorchScript), `830681e7` (MLState), `bf783c54` (fp16), `1b69eca7` (int4 60 s).
 
-**ANE placement:** MLState decode **0% ANE / 44% GPU** in compute plan; **torch.export decode 44.8% ANE / 1.3% GPU** (`TorchExport::ATEN`). Runtime ANE proxy still ~0% on both — see `NOTES.md` and Program Board § ANE Placement Status.
-
-Profile runs: `e43e6053` (MLState, 0% plan), `bf783c54` (torch.export, **44.8% plan**).
+**ANE placement:** torch.export fp16 **44.8% plan** / 0.07% runtime; **int4 44.1% plan / 2.9% runtime** — quant closes planner/runtime gap. See `NOTES.md`.
 
 ## Tracked artifacts
 
