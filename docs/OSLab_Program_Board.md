@@ -211,9 +211,22 @@ Stateful decode path landed in `phase1/kv_decode.py` + `--decode` on `ane_reside
 | `ane_residency_20260701T005247Z_b8d6539e` | Core ML | 512 | **35.0** | 0.3% | 83.4°C | Prefill Core ML + TorchScript decode (KV active) |
 | `ane_residency_20260701T005431Z_c4529935` | Core ML | 1024 | — | — | — | GPU OOM on prefill-kv recycle |
 
-**Decision:** KV hand-off works end-to-end; sustained Core ML decode throughput **35 t/s @ ctx 512** (~8× prefill proxy, ~3× slower than MLX — inside 3–5× band). ANE proxy **not retained** during decode because Core ML decode `.mlpackage` convert is blocked (`No matching select or slice`); decode runs via `qwen2.5-0.5b-decode-kv.pt` on CPU.
+**Decision:** KV hand-off works end-to-end; sustained Core ML decode throughput **35 t/s @ ctx 512** (~8× prefill proxy, ~3× slower than MLX — inside 3–5× band) with TorchScript fallback.
 
-**Gaps:** (1) Ship Core ML decode package for ANE residency during decode; (2) ctx 1024 OOM on full prefill-kv recycle; (3) IPJ comparison once Core ML decode path is fully on ANE.
+### Core ML Decode Conversion Status (2026-07-01)
+
+**Export path:** MLState (`ct.StateType` for `keyCache` / `valueCache`) via `phase1/coreml_kv_convert.py --mode decode`. Follows HuggingFace Mistral7B stateful export; Qwen2-specific patches for RoPE `rotate_half`, `repeat_kv`, and SDPA dtype alignment.
+
+**Artifact:** `models/qwen2.5-0.5b-decode-kv.mlpackage` ✅ (replaces blocked `No matching select or slice` / `int` op failures from stock `StaticCache` + dynamic shape ops).
+
+| Run | Decode runtime | ctx | Sust. t/s | ANE proxy | Temp steady | Notes |
+|-----|----------------|-----|-----------|-----------|-------------|-------|
+| `ane_residency_20260701T005247Z_b8d6539e` | TorchScript `.pt` | 512 | **35.0** | 0.3% | 83.4°C | Prior fallback |
+| `ane_residency_20260701T010929Z_830681e7` | **MLState `.mlpackage`** | 512 | **7.45** | **0.11%** | 83.5°C | First Core ML decode package benchmark |
+
+**Decision:** Core ML decode export **unblocked**; autoregressive loop runs fully on Core ML with `MLState` I/O (`inputIds` + `causalMask`, in-place cache). ANE residency **not recovered** during decode (0.11% vs 38% prefill proxy; vs 0.3% TorchScript baseline). Throughput **regressed** vs TorchScript (7.45 vs 35 t/s) — investigate compute-unit placement, int4 quant, and graph size.
+
+**Gaps:** (1) Recover meaningful ANE residency during decode (target 30%+); (2) Restore throughput to ≥ TorchScript baseline; (3) ctx 1024 OOM on full prefill-kv recycle when both models resident; (4) IPJ comparison once ANE routing improves.
 
 ### Success Metrics (First Experiment)
 

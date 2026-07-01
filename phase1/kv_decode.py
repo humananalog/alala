@@ -58,18 +58,24 @@ def run_mlx_decode_loop(
     )
 
 
+def _causal_mask(end_step: int) -> np.ndarray:
+    """4D causal mask for one decode query attending to `end_step` cached keys."""
+    return np.zeros((1, 1, 1, end_step), dtype=np.float16)
+
+
 def _resolve_decode_backend(decode_path: Path, decode_pt_path: Path | None):
     """Prefer Core ML decode mlpackage; fall back to TorchScript .pt."""
     if decode_path.exists():
         import coremltools as ct
 
-        return "coreml", ct.models.MLModel(str(decode_path), compute_units=ct.ComputeUnit.ALL), None
+        model = ct.models.MLModel(str(decode_path), compute_units=ct.ComputeUnit.ALL)
+        return "coreml", model, model.make_state()
 
     pt_path = decode_pt_path or DEFAULT_DECODE_PT
     if pt_path.exists():
         import torch
 
-        return "torchscript", torch.jit.load(str(pt_path)).eval(), torch
+        return "torchscript", torch.jit.load(str(pt_path)).eval(), None
 
     raise RuntimeError(
         f"No decode artifact found. Expected {decode_path} or {pt_path}. "
@@ -104,11 +110,20 @@ def run_coreml_decode_loop(
         raise ValueError(f"context_length {context_length} > max_ctx {max_ctx}")
 
     prefill_model = ct.models.MLModel(str(prefill_path), compute_units=ct.ComputeUnit.ALL)
-    decode_runtime, decode_runner, torch = _resolve_decode_backend(decode_path, decode_pt_path)
 
     rng = np.random.default_rng(context_length)
     prompt = np.zeros((1, max_ctx), dtype=np.int32)
     prompt[0, :context_length] = rng.integers(1, 5000, size=context_length, dtype=np.int32)
+
+    def _seed_decode_state(key_cache: np.ndarray, value_cache: np.ndarray) -> None:
+        if decode_runtime == "coreml" and decode_state is not None:
+            # Core ML state write accepts fp32 copies of prefill cache tensors.
+            decode_state.write_state(
+                "keyCache", np.ascontiguousarray(key_cache, dtype=np.float32)
+            )
+            decode_state.write_state(
+                "valueCache", np.ascontiguousarray(value_cache, dtype=np.float32)
+            )
 
     prefill_out = prefill_model.predict({"inputIds": prompt})
     key_cache = np.array(prefill_out["keyCache"], dtype=np.float16)
@@ -117,6 +132,9 @@ def run_coreml_decode_loop(
 
     logits = np.array(prefill_out["logits"])
     next_token = _greedy_token(logits[:, context_length - 1 : context_length, :])
+
+    decode_runtime, decode_runner, decode_state = _resolve_decode_backend(decode_path, decode_pt_path)
+    _seed_decode_state(key_cache, value_cache)
 
     start = time.monotonic()
     steady_start = start + max(0, duration_s - steady_window_s)
@@ -130,21 +148,20 @@ def run_coreml_decode_loop(
             key_cache = np.array(prefill_out["keyCache"], dtype=np.float16)
             value_cache = np.array(prefill_out["valueCache"], dtype=np.float16)
             cache_seq_len = context_length
+            _seed_decode_state(key_cache, value_cache)
             logits = np.array(prefill_out["logits"])
             next_token = _greedy_token(logits[:, context_length - 1 : context_length, :])
             continue
 
+        end_step = cache_seq_len + 1
         if decode_runtime == "coreml":
             decode_out = decode_runner.predict(
                 {
                     "inputIds": np.array([[next_token]], dtype=np.int32),
-                    "keyCache": key_cache,
-                    "valueCache": value_cache,
-                    "cacheSeqLen": np.array([cache_seq_len], dtype=np.int32),
-                }
+                    "causalMask": _causal_mask(end_step),
+                },
+                state=decode_state,
             )
-            key_cache = np.array(decode_out["keyCache"], dtype=np.float16)
-            value_cache = np.array(decode_out["valueCache"], dtype=np.float16)
             step_logits = np.array(decode_out["logits"])
         else:
             import torch as th
@@ -152,13 +169,9 @@ def run_coreml_decode_loop(
             with th.no_grad():
                 out = decode_runner(
                     th.tensor([[next_token]], dtype=th.int32),
-                    th.from_numpy(key_cache),
-                    th.from_numpy(value_cache),
-                    th.tensor([cache_seq_len], dtype=th.int32),
+                    th.tensor(_causal_mask(end_step)),
                 )
-            step_logits = out[0].numpy()
-            key_cache = out[1].numpy().astype(np.float16)
-            value_cache = out[2].numpy().astype(np.float16)
+            step_logits = out.numpy() if isinstance(out, th.Tensor) else out[0].numpy()
 
         cache_seq_len += 1
         total_tokens += 1
