@@ -5,8 +5,9 @@
 
 ## Current Phase
 
-**Phase 0 – ANE Characterization & Measurement Infrastructure** — **COMPLETE** (2026-06-30)  
-**Canonical synthesis**: `Phase0_Results_Summary_Alalā.md` (2026-07-01)
+**Phase 1 – ANE-First Execution & Seeding Model** — **STARTING** (2026-07-01)  
+**Strategy**: `Phase1_ANE_First_Strategy.md`  
+**Phase 0** — **COMPLETE** (2026-06-30); synthesis: `Phase0_Results_Summary_Alalā.md`
 
 **Prior label**: ANE Characterization & Measurement Infrastructure  
 **Started**: 2026-06-30  
@@ -79,6 +80,7 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 5. **R04** 24 GB working-set pressure
 
 ## Recent Decisions
+- 2026-07-01: Phase 1 seeding model — **Qwen2.5-0.5B-Instruct** selected for first ANE conversion attempt (see Seeding Model Decision).
 - 2026-07-01: SRAM cliff detector updated for MLX GPU path (throughput + memory/power signals; ANE % optional).
 - 2026-07-01: Phase 0 canonical results summary published (`Phase0_Results_Summary_Alalā.md`).
 - 2026-06-30: Thermal headroom and sustained IPJ take precedence over peak throughput.
@@ -160,16 +162,75 @@ All five success criteria have **measured M4 numbers** with powermetrics artifac
 
 None for Phase 0 completion.
 
-## Phase 1 Entry Criteria (Recommended)
+## Phase 1 — ANE-First Execution
 
-- SRAM cliff detector fix — **done** (2026-07-01).
-- Measurable ANE utilization **> 60%** on a small seeding model (350M–1B class via CoreML or ANE-friendly MLX).
-- Safe operating region: context ≤ 1024 (or paged KV) + thermal duty cycle.
-- First bounded self-improvement micro-scaffold with IPJ gating.
+**Status**: Active (2026-07-01)  
+**Tools**: `phase1/coreml_convert.py`, `phase1/ane_residency_benchmark.py`
+
+### Entry Criteria
+
+| Criterion | Status |
+|-----------|--------|
+| Phase 0 complete with measured baselines | **Done** |
+| SRAM cliff detector fix | **Done** (2026-07-01) |
+| Core ML conversion helper + ANE residency benchmark scaffold | **Done** (2026-07-01) |
+| Measurable ANE utilization **> 60%** on seeding model | Pending first hardware run |
+| Safe operating region: context ≤ 1024 (or paged KV) + thermal duty cycle | Pending validation |
+| First bounded self-improvement micro-scaffold with IPJ gating | After ANE residency gate |
+
+### First Experiment (Week 1)
+
+**Model**: `Qwen/Qwen2.5-0.5B-Instruct` (primary seeding candidate)
+
+**Pipeline**:
+1. Convert to Core ML — `python phase1/coreml_convert.py --model Qwen/Qwen2.5-0.5B-Instruct --output models/qwen2.5-0.5b-ane.mlpackage`
+2. Run ANE residency benchmark at ctx **512** and **1024** — `python phase1/ane_residency_benchmark.py --backend coreml --coreml-path models/qwen2.5-0.5b-ane.mlpackage`
+3. Run MLX comparison baseline — `python phase1/ane_residency_benchmark.py --backend mlx --mlx-model mlx-community/Qwen2.5-0.5B-Instruct-4bit`
+4. Log powermetrics + JSONL to `logs/` and `results/ane_residency/` per Phase 0 protocol
+
+**Controls**: batch=1, thermal threshold **85°C** steady-state (Phase 0 envelope), 60 s step / 30 s steady window.
+
+### First Experiment Results (2026-07-01)
+
+| Run | Backend | ctx | Sust. t/s | ANE proxy % | Temp steady | Notes |
+|-----|---------|-----|-----------|-------------|-------------|-------|
+| `ane_residency_20260701T001734Z_0bd0328f` | MLX 0.5B | 512 | **84.2** | ~0% | 81.9°C | Aborted before ctx 1024 (peak 92°C) |
+| `ane_residency_20260701T002500Z_d1b410d0` | Core ML | 512 | 4.2 | **38.0%** | 62.9°C | Prefill proxy; **measurable ANE residency** |
+| `ane_residency_20260701T002500Z_d1b410d0` | Core ML | 1024 | 3.9 | **11.7%** | 84.8°C | Aborted post-run (peak 87.7°C) |
+
+**Decision**: Core ML path achieves real ANE energy attribution (38% @ ctx 512) vs ~0% MLX GPU. Throughput/IPJ not yet competitive — prefill-only proxy + no KV decode. Next: stateful Core ML decode + IPJ within 10% gate.
+
+### Success Metrics (First Experiment)
+
+| Metric | Target | Status (2026-07-01) |
+|--------|--------|---------------------|
+| ANE utilization | **> 0%** first run; **> 60%** gate | **38% @ ctx 512** (Core ML); ~0% MLX |
+| Sustained IPJ | Within **10%** of MLX baseline (or better) | **Not met** — prefill proxy only |
+| Sustained throughput | Document tok/s at ctx 512 and 1024 | MLX 84.2 / Core ML 4.2 @512; Core ML 3.9 @1024 |
+| Thermal compliance | Steady-state **≤ 85°C** | MLX aborted 92°C; Core ML completed with post-run abort 87.7°C |
+| Energy attribution | ANE / CPU / GPU joules per step | **Done** — Core ML 200 J ANE @ ctx 512 |
+
+**Reference baseline**: Phase 0 MLX GPU path (7B model) — ~9.65 t/s @ ctx 512, ~6.40 t/s @ ctx 1024, ~0% ANE (`sram_cliff_20260630T150641Z_f384fd3c`). Phase 1 compares 0.5B paths against this reference and records deltas.
+
+### Seeding Model Decision
+
+**Strategy doc**: `Phase1_ANE_First_Strategy.md`  
+**Primary candidate for first conversion attempt**: **Qwen2.5-0.5B-Instruct**
+
+Ranked by expected trade-off among model size, instruction capability, and ANE mapping quality on M4 (working set vs ~28–30 MB ANE SRAM budget; sustained IPJ under \( L_{\text{cliff}}=1024 \)):
+
+| Rank | Model | Params | Physics rationale |
+|------|-------|--------|-------------------|
+| **1 (start here)** | **Qwen2.5-0.5B-Instruct** | ~0.5B | Smallest capable instruct model in set; weights + activations at ctx 512–1024 stay well below unified-memory pressure seen at 7B; transformer blocks map cleanly to Core ML fixed shapes; strong instruction following for seeding agent loops without 7B thermal/memory tax. |
+| 2 | Phi-3.5-mini / Phi-3-mini-128k | ~3.8B / ~3.8B | Excellent reasoning per parameter, but larger than ideal for first ANE residency proof — higher KV footprint approaches \( L_{\text{cliff}} \) faster and may reduce ANE tile residency; reserve as fallback if Qwen 0.5B conversion under-delivers on capability. |
+| 3 | Gemma-2-2B-IT (quantized) | ~2B | Mid-size; quantized weights help bandwidth but add dequant path (Phase 0: +5.5 J overhead, ΔIPJ −0.0028 on MLX GPU). Test after primary path establishes ANE utilization baseline. |
+| 4 | Custom distilled ~350M | ~350M | Maximum ANE mapping surface area if off-the-shelf models fail residency targets; higher engineering cost — only if ranks 1–3 cannot reach >60% ANE utilization with acceptable IPJ. |
+
+**Decision (2026-07-01)**: Begin Core ML / ANE-friendly conversion with **Qwen2.5-0.5B-Instruct**. Measure ANE utilization %, sustained tok/s at ctx 512 and 1024, energy per token, IPJ, and thermal behavior vs MLX GPU baseline (Phase 0: ~9.65 / ~6.40 t/s sustained, ~0% ANE).
 
 ## Next Milestone
 
-**Phase 1** — ANE-first routing validation, compiler pass prototyping per `Revised_Phase0_2_Systems_Plan_Alalā.md`. Gate on entry criteria above.
+Execute first ANE residency experiment on physical M4 (Qwen2.5-0.5B Core ML conversion + benchmark). Gate compiler pass prototyping on success metrics above per `Revised_Phase0_2_Systems_Plan_Alalā.md`.
 
 ## Human Review Flags
 _See table above (post-audit)._

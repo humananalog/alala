@@ -45,6 +45,7 @@ required_docs=(
   "Phase0_AI_Coder_Task_List.md"
   "Phase0_Microbenchmark_Suite_Plan.md"
   "Phase0_Results_Summary_Alalā.md"
+  "Phase1_ANE_First_Strategy.md"
   "Phase0_Week1_2_Task_Breakdown.md"
   "Risk_Register.md"
   "Revised_Phase0_2_Systems_Plan_Alalā.md"

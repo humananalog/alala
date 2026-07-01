@@ -1,0 +1,21 @@
+{
+  "abort_reason": "temperature 92.0C exceeded threshold 85.0C",
+  "aborted": true,
+  "ane_utilization_proxy_by_context": {
+    "512": null
+  },
+  "backend": "mlx",
+  "contexts_tested": [
+    512
+  ],
+  "experiment_id": "ane_residency_20260701T001734Z_0bd0328f_summary",
+  "hardware": "Apple M4",
+  "model_path": "mlx-community/Qwen2.5-0.5B-Instruct-4bit",
+  "powermetrics_log_path": null,
+  "run_id": "ane_residency_20260701T001734Z_0bd0328f",
+  "task_type": "ane_residency_summary",
+  "timestamp": "2026-07-01T00:18:43Z",
+  "tokens_per_second_sustained_by_context": {
+    "512": 84.167
+  }
+}

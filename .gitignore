@@ -6,6 +6,9 @@
 checkpoints/*
 !checkpoints/.gitkeep
 
+# Converted Core ML packages (large; reproduce via phase1/coreml_convert.py)
+models/*.mlpackage/
+
 # Python
 __pycache__/
 *.py[cod]
