@@ -116,6 +116,10 @@ class StepMetrics:
     kv_cache_active: bool
     decode_runtime: str | None
     compute_units: str | None = None
+    kv_cache_mode: str | None = None
+    ring_size: int | None = None
+    re_prefill_count: int | None = None
+    kv_io_bytes_per_step: int | None = None
 
 
 def _mean(values: list[float]) -> float | None:
@@ -188,7 +192,9 @@ def run_workload(
     decode_tokens: int,
     compute_units: str = "all",
     log_model_load: bool = True,
-) -> tuple[int, float, float, float | None, bool, str | None]:
+    kv_cache_mode: str = "linear",
+    ring_size: int = 512,
+) -> tuple[int, float, float, float | None, bool, str | None, dict[str, object]]:
     """Run one benchmark step; returns tokens, tps, tps_sustained, peak_mem, kv_cache_active, decode_runtime."""
     if backend == "mlx":
         assert mlx_runner is not None
@@ -208,6 +214,12 @@ def run_workload(
                 steady_window_s=steady_window_s,
                 decode_tokens=decode_tokens,
             )
+        meta = {
+            "kv_cache_mode": getattr(result, "kv_cache_mode", None),
+            "ring_size": getattr(result, "ring_size", None),
+            "re_prefill_count": getattr(result, "re_prefill_count", None),
+            "kv_io_bytes_per_step": getattr(result, "kv_io_bytes_per_step", None),
+        }
         return (
             result.tokens_generated,
             result.tokens_per_second,
@@ -215,6 +227,7 @@ def run_workload(
             result.peak_memory_gb,
             result.kv_cache_active,
             result.decode_runtime,
+            meta,
         )
 
     if decode_mode:
@@ -230,6 +243,8 @@ def run_workload(
             decode_tokens=decode_tokens,
             compute_units=compute_units,
             log_model_load=log_model_load,
+            kv_cache_mode=kv_cache_mode,
+            ring_size=ring_size,
         )
     else:
         assert prefill_only_path is not None
@@ -242,6 +257,12 @@ def run_workload(
             compute_units=compute_units,
             log_model_load=log_model_load,
         )
+    meta = {
+        "kv_cache_mode": getattr(result, "kv_cache_mode", None),
+        "ring_size": getattr(result, "ring_size", None),
+        "re_prefill_count": getattr(result, "re_prefill_count", None),
+        "kv_io_bytes_per_step": getattr(result, "kv_io_bytes_per_step", None),
+    }
     return (
         result.tokens_generated,
         result.tokens_per_second,
@@ -249,6 +270,7 @@ def run_workload(
         result.peak_memory_gb,
         result.kv_cache_active,
         result.decode_runtime,
+        meta,
     )
 
 
@@ -307,10 +329,16 @@ def build_step_record(
         "kv_cache_active": step.kv_cache_active,
         "decode_runtime": step.decode_runtime,
         "compute_units": step.compute_units,
+        "kv_cache_mode": step.kv_cache_mode,
+        "ring_size": step.ring_size,
+        "re_prefill_count": step.re_prefill_count,
+        "kv_io_bytes_per_step": step.kv_io_bytes_per_step,
         "notes": (
             f"Phase 1 ANE residency; backend={step.backend}; "
             f"decode_mode={step.decode_mode}; kv_cache_active={step.kv_cache_active}; "
             f"decode_runtime={step.decode_runtime}; compute_units={step.compute_units}; "
+            f"kv_cache_mode={step.kv_cache_mode}; ring_size={step.ring_size}; "
+            f"re_prefill_count={step.re_prefill_count}; "
             "ane_utilization_proxy = ane_energy / (cpu+gpu+ane) from powermetrics."
         ),
         "powermetrics_log_path": step.powermetrics_log_path,
@@ -366,7 +394,8 @@ def run_benchmark(args: argparse.Namespace) -> int:
     print(
         f"[alala] backend={backend} decode={args.decode} model={model_label} "
         f"contexts={contexts} temp_threshold={args.temp_threshold}C "
-        f"compute_units={args.compute_units}"
+        f"compute_units={args.compute_units} kv_cache_mode={args.kv_cache_mode} "
+        f"ring_size={args.ring_size}"
     )
 
     if backend == "coreml":
@@ -414,7 +443,7 @@ def run_benchmark(args: argparse.Namespace) -> int:
         session = PowerMetricsSession(pm_path, interval_ms=args.interval_ms)
         session.start()
         try:
-            tokens, tps, tps_sustained, peak_mem, kv_active, decode_runtime = run_workload(
+            tokens, tps, tps_sustained, peak_mem, kv_active, decode_runtime, kv_meta = run_workload(
                 backend=backend,
                 decode_mode=args.decode,
                 mlx_runner=mlx_runner,
@@ -429,6 +458,8 @@ def run_benchmark(args: argparse.Namespace) -> int:
                 decode_tokens=args.decode_tokens,
                 compute_units=args.compute_units,
                 log_model_load=False,
+                kv_cache_mode=args.kv_cache_mode,
+                ring_size=args.ring_size,
             )
         finally:
             session.stop()
@@ -475,6 +506,10 @@ def run_benchmark(args: argparse.Namespace) -> int:
             kv_cache_active=kv_active,
             decode_runtime=decode_runtime,
             compute_units=args.compute_units if backend == "coreml" else None,
+            kv_cache_mode=kv_meta.get("kv_cache_mode"),  # type: ignore[arg-type]
+            ring_size=kv_meta.get("ring_size"),  # type: ignore[arg-type]
+            re_prefill_count=kv_meta.get("re_prefill_count"),  # type: ignore[arg-type]
+            kv_io_bytes_per_step=kv_meta.get("kv_io_bytes_per_step"),  # type: ignore[arg-type]
         )
         steps.append(step)
         write_jsonl(jsonl_path, build_step_record(run_id=run_id, step=step, hardware=hardware, timestamp=utc_now_iso()))
@@ -567,6 +602,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
         choices=COMPUTE_UNIT_CHOICES,
         default="all",
         help="Core ML compute unit preference (all, cpu_and_ne, cpu_and_gpu, cpu_only)",
+    )
+    parser.add_argument(
+        "--kv-cache-mode",
+        choices=("linear", "ring"),
+        default="linear",
+        help="KV cache update strategy for Core ML decode (ring = fixed-size circular buffer)",
+    )
+    parser.add_argument(
+        "--ring-size",
+        type=int,
+        default=512,
+        help="Ring buffer capacity when --kv-cache-mode=ring (default: 512)",
     )
     parser.add_argument(
         "--profile",

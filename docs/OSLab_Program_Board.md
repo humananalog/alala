@@ -1,17 +1,22 @@
 # OSLab Program Board — Alalā
 
-**Version**: 1.2
+**Version**: 1.4
 **Purpose**: Single source of truth for current status, risks, decisions, and progress.
 
 ## Current Phase
 
-**Phase 1 – ANE-First Execution & Seeding Model** — **STARTING** (2026-07-01)  
-**Strategy**: `Phase1_ANE_First_Strategy.md`  
+**Phase 2 – Fundamental Co-Design Research (Option C)** — **ACTIVE** (July 2026 onward)  
+**Vision**: `Alalā_Vision_and_Strategy.md` (v2 — High-Risk Research Mode)  
+**Research backlog**: `Alalā_Research_Agenda.md` — threads, priorities, next actions  
+**Phase 1** — **COMPLETE** (measurement + Core ML characterization); artifacts in `phase1/NOTES.md`  
 **Phase 0** — **COMPLETE** (2026-06-30); synthesis: `Phase0_Results_Summary_Alalā.md`
 
-**Prior label**: ANE Characterization & Measurement Infrastructure  
+**Risk posture**: High risk, high potential reward — deep and broad exploration over incremental optimization.  
+**Primary metric**: Sustained useful cognitive work per joule on Apple Silicon (M4 class), with agentic/self-improvement capability as a co-equal goal.
+
+**Prior Phase 1 label**: ANE-First Execution & Seeding Model (2026-07-01)  
 **Started**: 2026-06-30  
-**Target**: Harness implementation on physical Mac Mini M4 24 GB, then Week 1–2 measurements
+**Target (Phase 0–1, achieved)**: Harness + physical M4 baselines; Core ML ANE placement and decode characterization
 
 **Readiness (2026-06-30)**:
 - Documentation audit Tasks 1–5 **complete**
@@ -33,6 +38,50 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 | Orchestration overhead | `energy_cpu_orchestration_joules` / total joules ratio documented | Benchmark 4 / `orchestration` | **Done** — ~4.3% CPU/total tight loop |
 
 **Governing principle**: Thermal headroom and sustained IPJ take precedence over peak throughput.
+
+## Strategic Shift (July 2026)
+
+Alalā is moving from **incremental optimization** of existing transformer + Core ML stacks to **fundamental hardware–model co-design** research.
+
+**Why:** Phase 1 experiments showed that standard decoder-only transformers with autoregressive decode have structural mismatches with ANE (dynamic shapes, state management, KV I/O dominance). Incremental tuning (int4 quant, graph cleanup, ctx-specific exports) improved throughput in places but did not close the plan/runtime ANE gap or unlock sustained high ANE utilization during decode.
+
+**New direction (Option C):**
+- Explore KV cache / state architecture redesign (static shapes, ring buffers, reduced per-step I/O).
+- Co-design inference execution (hybrid ANE + GPU/MLX from first principles, thermal-aware routing).
+- Adapt model components for ANE operator and shape constraints.
+- Build a self-improvement substrate suited to long-horizon agentic loops.
+
+**What changes:** Success is no longer gated on polishing Qwen2.5-0.5B Core ML residency alone. Phase 1 tooling and measurements remain authoritative baselines; new work may abandon or radically reshape those paths when evidence supports it.
+
+**Authoritative strategy doc**: `Alalā_Vision_and_Strategy.md`  
+**Active research backlog**: `Alalā_Research_Agenda.md`
+
+## Active Research Backlog (July 2026)
+
+Tracked in `Alalā_Research_Agenda.md`. Current thread priorities:
+
+| # | Thread | Priority | Status |
+|---|--------|----------|--------|
+| 1 | KV Cache / State Architecture Redesign | **Highest** | Not started |
+| 2 | Disaggregated / Hybrid Execution Architecture | High | Not started |
+| 3 | Lower-Level ANE Access and Runtime Techniques | Medium-High | Not started |
+| 4 | KV Cache Quantization and Compression | Medium | Not started |
+| 5 | Speculative Decoding and Parallel Techniques | Medium | Not started |
+
+**Next action (from agenda):** Start thread 1 — KV/state redesign experiments grounded in Phase 1 findings (`phase1/NOTES.md`).
+
+## Phase 2 Success Criteria (Research Mode)
+
+Per `Alalā_Vision_and_Strategy.md` — longer-term, non-linear progress expected:
+
+| Criterion | Target |
+|-----------|--------|
+| Sustained useful work per joule | Demonstrable improvement vs strong on-device baselines (MLX, Phase 1 Core ML paths) |
+| Novel efficiency or capability regimes | Evidence that co-designed approaches unlock outcomes difficult with conventional stacks |
+| Hardware–model co-design knowledge | Documented understanding of ANE/NPU constraints and viable design patterns for Apple Silicon |
+| Risk acceptance | Negative results documented; direction changes when data demands |
+
+Phase 0 measurable criteria (thermal baseline, SRAM cliff, harness) remain valid **reference baselines** — not Phase 2 exit gates.
 
 ## Documentation Audit Log (2026-06-30)
 
@@ -80,6 +129,9 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 5. **R04** 24 GB working-set pressure
 
 ## Recent Decisions
+- 2026-07-01: **Research Agenda published** — `Alalā_Research_Agenda.md` is the evolving Phase 2 backlog; update thread status after each significant experiment.
+- 2026-07-01: **Strategic shift to Option C (high-risk co-design research)** — abandon incremental-only optimization as primary path; adopt `Alalā_Vision_and_Strategy.md` v2. Phase 1 measurements preserved as baselines.
+- 2026-07-01: **ctx-512 decode export experiment** — halved KV I/O (**6.3 MB/step**) yields **47.4 t/s** @ bench ctx 256 (`649919bf`, +71% vs mask int4 ctx1024) and **−60% GPU J**, but **0% ANE compute plan** (vs 44.1% ctx1024). ctx512 @ bench ctx 512 invalid (1.3 t/s re-prefill thrash). **Keep ctx512 as throughput-only** variant; ANE path stays ctx1024 mask int4. Hybrid unchanged.
 - 2026-07-01: **Mask int4 plan/runtime gap analysis** — CLI profiling (`compute_plan_analysis.py`, `powermetrics_timeseries.py`): **95.6% of placed ops** prefer ANE; gap is structural (KV I/O ~12.6 MB/step, CPU orchestration 38% energy, GPU 59%). Steady ANE proxy **2.7–5.6%** per 5 s windows. **Confirm hybrid**; optional ctx-512 re-export + Instruments on Xcode M4. Runs `1b69eca7`, `5fe0d68c`. Artifacts: `results/compute_plan_analysis/`.
 - 2026-07-01: **Graph cleanup (scatter KV) + hybrid recommendation** — scatter int4 clean: **48.6 t/s** but **0.36% ANE** (mask int4: 27.7 t/s, 2.9% ANE). Scatter regresses ANE plan to 0%. **Recommend hybrid** (mask int4 for ANE energy, scatter for throughput). Run `6f90882a`.
 - 2026-07-01: **int4 decode quant succeeds** — mask int4 @ ctx 512: **27.73 t/s**, **2.90% ANE proxy**. Run `1b69eca7`.
@@ -271,7 +323,17 @@ Benchmark: `ane_residency_20260701T022853Z_1b69eca7` (60 s, ctx 512). Tool: `pha
 - `results/ane_placement_profile/ane_placement_profile_20260701T020740Z_bf783c54/` — fp16 torch.export profile
 - `results/ane_residency/ane_residency_20260701T010929Z_830681e7/` — MLState baseline
 
-**Gaps:** (1) ANE proxy unlikely to approach 44% without in-package KV state — hybrid split accepted; (2) Mask int4 27.7 t/s vs scatter 48.6 t/s vs MLX 106.7; (3) ctx 1024 + triple-model profile OOM; (4) Instruments Core ML trace on Xcode M4 (manual).
+**ctx-512 decode results:**
+
+| Metric | mask int4 ctx1024 (`1b69eca7`) | mask int4 ctx512 (`649919bf`, ctx 256) |
+|--------|-------------------------------|----------------------------------------|
+| KV I/O / step | ~12.6 MB | ~6.3 MB |
+| Sust. t/s | 27.73 | **47.37** |
+| ANE plan | 44.1% | **0%** |
+| ANE proxy | 2.90% | 0.78% |
+| GPU J | 646 | **261** |
+
+**Gaps:** (1) ANE proxy unlikely on ctx1024 without in-package KV; ctx512 trades ANE plan for I/O; (2) Explain why `max_ctx=512` → 0% ANE plan; (3) ctx 1024 triple-model profile OOM; (4) Instruments on Xcode M4.
 
 ### Success Metrics (First Experiment)
 
@@ -303,7 +365,7 @@ Ranked by expected trade-off among model size, instruction capability, and ANE m
 
 ## Next Milestone
 
-Execute first ANE residency experiment on physical M4 (Qwen2.5-0.5B Core ML conversion + benchmark). Gate compiler pass prototyping on success metrics above per `Revised_Phase0_2_Systems_Plan_Alalā.md`.
+Execute highest-priority thread in `Alalā_Research_Agenda.md` (KV Cache / State Architecture Redesign). Ground prototypes in Phase 0–1 measured constraints (IPJ, thermal, SRAM cliff, ANE placement gaps in `phase1/NOTES.md`). Update agenda thread status and Program Board after each experiment.
 
 ## Human Review Flags
 _See table above (post-audit)._

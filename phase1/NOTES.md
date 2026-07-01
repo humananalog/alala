@@ -1,5 +1,12 @@
 # Phase 1 — Core ML Model Interface Notes
 
+## Strategic Context
+
+As of **July 2026**, Alalā has shifted to **high-risk, deep + broad exploration mode (Option C)** — fundamental hardware–model co-design rather than incremental Core ML optimization. Phase 1 notes and measurements remain authoritative baselines. See [`docs/Alalā_Vision_and_Strategy.md`](../docs/Alalā_Vision_and_Strategy.md).
+
+**KV / state redesign prior art**: [`docs/KV_Cache_Techniques_for_NPUs_and_Apple_Silicon.md`](../docs/KV_Cache_Techniques_for_NPUs_and_Apple_Silicon.md) (literature review for Research Agenda thread 1).  
+**Exp 1 (ring buffer)**: [`docs/KV_Cache_Redesign_Synthesis_and_Experiments.md`](../docs/KV_Cache_Redesign_Synthesis_and_Experiments.md) — **Iterate**; ring512 int4 default decode path.
+
 ## Current prefill-only package (`models/qwen2.5-0.5b-ane.mlpackage`)
 
 **Exported:** 2026-07-01 via `torch.export` + `use_cache=False` wrapper.
@@ -344,18 +351,124 @@ None of these alone is likely to reach **60% ANE proxy** while keeping torch.exp
 
 See **`phase1/PROFILING.md`** for Core ML + Metal System Trace attach workflow, CLI substitutes (`compute_plan_analysis.py`, `powermetrics_timeseries.py`), powermetrics correlation tables, and manual Instruments checklist.
 
-### Recommendation (post gap analysis, 2026-07-01)
+### ctx-512 decode export experiment (2026-07-01)
 
-Gap analysis confirms the mask int4 plan/runtime delta is **structural** (KV I/O + orchestration dominate; 95.6% of *placed* ops already prefer ANE). Scatter cleanup trades the remaining ANE for throughput (0.36% vs 2.90%).
+**Hypothesis:** Halving KV tensor I/O (~12.6 MB → **6.3 MB**/step) via `max_ctx=512` decode export should improve throughput and efficiency.
 
-**Recommend hybrid architecture:**
+**Export:**
 
-1. **ANE / IPJ path:** mask int4 torch.export decode — best measured ANE proxy (**2.9%**), 44% plan, 27.7 t/s.
-2. **Throughput path:** scatter int4 clean + int4 prefill — **48.6 t/s**, 0.36% ANE.
-3. **Optional next experiments (mask path only):** ctx-512 decode export to shrink KV I/O; `CPU_AND_NE` load test; Instruments on Xcode M4 per `PROFILING.md`.
-4. **Do not pursue** scatter-only ANE optimization — `scatter` is GPU-plan by design.
+```bash
+# fp16 torch.export decode @ max_ctx=512 → …-ctx512.mlpackage
+phase1/.venv/bin/python phase1/coreml_kv_convert.py \
+  --mode decode_torch_export --max-ctx 512 --output-dir models
 
-Do **not** expect single-path optimization to hit **60% ANE proxy** without in-package KV state (MLState regresses ANE) or a non-CoreML decode runtime.
+# int4 post-export
+phase1/.venv/bin/python phase1/coreml_quantize.py \
+  --input models/qwen2.5-0.5b-decode-kv-torch-export-ctx512.mlpackage \
+  --output models/qwen2.5-0.5b-decode-kv-torch-export-int4-ctx512.mlpackage \
+  --max-ctx 512
+```
+
+**Code changes:**
+
+- `coreml_kv_convert.py`: `-ctx{max_ctx}` suffix on decode artifact when `max_ctx ≠ 1024`.
+- `kv_decode.py`: infer `decode_max_ctx` from decode model `keyCache` shape; slice 1024 prefill caches to decode width; cap prompt to `decode_max_ctx - 1` when benchmark context would fill the cache.
+
+**KV cache shapes:**
+
+| Model | `keyCache` / `valueCache` | Bytes/step (in+out fp16) |
+|-------|---------------------------|--------------------------|
+| mask int4 ctx1024 | `(24, 1, 2, 1024, 64)` | ~12.6 MB |
+| mask int4 ctx512 | `(24, 1, 2, 512, 64)` | ~**6.3 MB** |
+
+**Compute plan (unexpected regression):**
+
+| Artifact | ANE plan % | GPU plan % | Placed ANE % |
+|----------|------------|------------|--------------|
+| mask int4 ctx1024 | **44.1%** | 2.0% | **95.6%** |
+| mask int4 ctx512 (fp16 + int4) | **0.0%** | **46.1%** | **0%** |
+
+`max_ctx=512` export routes **all 1705 placed ops to GPU** — ANE placement from ctx1024 is **not preserved**. Runtime logs `ANECCompile() FAILED` on load. This is independent of int4 quant (fp16 ctx512 shows the same 0% plan).
+
+**Benchmark comparison** (int4 prefill-kv + mask int4 decode, 60 s steady window):
+
+| Run | Decode pkg | Bench ctx | Active prompt | Sust. t/s | ANE proxy | ANE J | GPU J | CPU J | Power W | Temp steady |
+|-----|------------|-----------|---------------|-----------|-----------|-------|-------|-------|---------|-------------|
+| `1b69eca7` | int4 ctx1024 | 512 | 512 | **27.73** | **2.90%** | 31.9 | 646 | 421 | — | 75.2°C |
+| `bbc356a7` | int4 ctx512 | 512 | **511** (capped) | **1.33** | 1.94% | 48.1 | 1626 | 808 | 15.3 | 83.5°C |
+| `649919bf` | int4 ctx512 | **256** | 256 | **47.37** | 0.78% | 7.7 | **261** | 720 | 7.4 | 78.3°C |
+| `6f90882a` | scatter int4 ctx1024 | 512 | 512 | 48.60 | 0.36% | 3.7 | 122 | 900 | — | 64°C |
+
+**Analysis:**
+
+1. **KV I/O reduction works for throughput** when sustained decode is possible — `649919bf` achieves **47.4 t/s** (+71% vs ctx1024 mask int4) with **−60% GPU joules** (261 vs 646 J), consistent with halved tensor copies dominating GPU energy on the ctx1024 path.
+2. **`bbc356a7` is invalid at ctx 512** — with `decode_max_ctx=512`, a 511-token prompt leaves **one** decode slot; the loop re-prefills almost every step → 1.33 t/s. Do not benchmark ctx512 decode at full context without a smaller prompt.
+3. **ANE proxy regresses** on ctx512 (0.78% vs 2.9%) because compute plan drops to **0% ANE** — smaller KV export changes planner/compiler behavior, not just I/O volume.
+4. **IPJ** on the valid ctx512 run (`649919bf`): **3.16** vs mask int4 ctx1024 **1.32** — better energy per token despite lower ANE share.
+
+**Limitations:**
+
+- Prefill remains **1024-wide** (`prefill-kv-int4`); caches are sliced on hand-off (small CPU cost, no re-export).
+- ctx512 decode cannot serve **512-token prompts with 512 tokens of decode headroom** — `decode_max_ctx` caps total sequence length.
+- ctx512 loses ANE compile-time placement entirely on this export.
+
+### Recommendation (post ctx-512 experiment, 2026-07-01)
+
+**Keep hybrid architecture; ring512 supersedes mask linear for sustained Core ML decode.**
+
+| Path | Model | When to use |
+|------|-------|-------------|
+| **Default (Core ML decode)** | **ring int4 512** | **38.3 t/s**, **6.7% ANE**, IPJ **3.23**, 0 re-prefill (`fc860526`) |
+| **Legacy linear** | mask int4 ctx1024 | 27.7 t/s, 2.9% ANE — superseded by ring for sustained loops |
+| **Max throughput** | scatter int4 clean + int4 prefill | **48.6 t/s**, 0.36% ANE when ANE irrelevant |
+| **ctx512 tensor (deprecated for ANE)** | mask int4 ctx512 @ ctx≤256 | 47.4 t/s, 0% ANE plan |
+
+**Do not maintain ctx512 for ANE residency** — export regresses plan to 0% ANE. The KV I/O win is real but trades away the mask path's only ANE advantage.
+
+### Ring buffer KV experiment (2026-07-01) — Exp 1 ✅ Iterate
+
+**Hypothesis**: Fixed-size ring buffer (512) eliminates linear re-prefill thrash, bounds attended KV slots, improves sustained t/s and ANE proxy vs mask int4 linear — using same ctx1024 tensor I/O.
+
+**Implementation**:
+- `phase1/ring_buffer_kv.py` — sliding-window causal mask, re-prefill policy
+- `kv_decode.py` — `--kv-cache-mode ring` (via `ane_residency_benchmark.py`)
+- `coreml_kv_convert.py --ring-size 512` — bakes `cache_position % 512` for KV writes; logical position for RoPE
+- Artifacts: `…-decode-kv-torch-export-ring512.mlpackage`, `…-int4-ring512.mlpackage`
+
+**60 s benchmark @ ctx 512** (`ane_residency_20260701T102405Z_fc860526` vs baseline `1b69eca7`):
+
+| Metric | mask int4 linear | ring int4 512 | Δ |
+|--------|------------------|---------------|---|
+| Sust. t/s | 27.73 | **38.30** | +38% |
+| ANE proxy | 2.90% | **6.70%** | +131% |
+| ANE J | 31.9 | 47.7 | +50% |
+| GPU J | 646 | **20.6** | −97% |
+| Total J | 1099 | **712** | −35% |
+| IPJ | 1.32 | **3.23** | +145% |
+| Temp steady | 75.2°C | **56.9°C** | −18°C |
+| Re-prefills | ~3 | **0** | eliminated |
+| KV I/O bytes/step | ~25 MB | ~25 MB | unchanged |
+| ANE plan % | 44.1% | 44.0% | ~same |
+
+**Verdict**: Hypothesis **supported** for throughput, ANE proxy, energy, thermal. KV tensor I/O size unchanged; wins from **no re-prefill** + **512-slot attention window** + shifted runtime energy (GPU → ANE/CPU).
+
+**Surprises**: GPU joules collapsed despite full cache copies; ANE proxy >2× without MLState.
+
+**Decision**: **Iterate** — ring512 default for sustained decode; next: quality gate, then consolidated MLState to drop explicit I/O.
+
+```bash
+phase1/.venv/bin/python phase1/ane_residency_benchmark.py \
+  --backend coreml --decode --context 512 \
+  --coreml-prefill-kv models/qwen2.5-0.5b-prefill-kv-int4.mlpackage \
+  --coreml-decode-kv models/qwen2.5-0.5b-decode-kv-torch-export-int4-ring512.mlpackage \
+  --kv-cache-mode ring --ring-size 512
+```
+
+**Next experiments:**
+
+1. **Quality gate** — greedy match / perplexity vs linear full-cache.
+2. **Consolidated MLState** (SqueezeBits 2-state) — remove explicit KV I/O.
+3. Instruments on Xcode M4 to confirm per-op NE duty cycle on ring vs linear.
 
 ## Tooling and commands
 
@@ -374,6 +487,21 @@ Do **not** expect single-path optimization to hit **60% ANE proxy** without in-p
 # Export torch.export decode (explicit KV I/O, no MLState)
 phase1/.venv/bin/python phase1/coreml_kv_convert.py \
   --mode decode_torch_export --output-dir models --max-ctx 1024
+
+# Ring-buffer decode (bakes position % ring_size for KV write)
+phase1/.venv/bin/python phase1/coreml_kv_convert.py \
+  --mode decode_torch_export --ring-size 512 --output-dir models
+phase1/.venv/bin/python phase1/coreml_quantize.py \
+  --input models/qwen2.5-0.5b-decode-kv-torch-export-ring512.mlpackage \
+  --output models/qwen2.5-0.5b-decode-kv-torch-export-int4-ring512.mlpackage
+
+# ctx-512 decode variant (halved KV I/O; artifact suffix -ctx512)
+phase1/.venv/bin/python phase1/coreml_kv_convert.py \
+  --mode decode_torch_export --max-ctx 512 --output-dir models
+phase1/.venv/bin/python phase1/coreml_quantize.py \
+  --input models/qwen2.5-0.5b-decode-kv-torch-export-ctx512.mlpackage \
+  --output models/qwen2.5-0.5b-decode-kv-torch-export-int4-ctx512.mlpackage \
+  --max-ctx 512
 
 # Benchmark with instrumentation (writes coreml_load_report.json per run)
 phase1/.venv/bin/python phase1/ane_residency_benchmark.py \
@@ -396,6 +524,10 @@ PYTHONPATH=phase1 phase1/.venv/bin/python phase1/ane_placement_profile.py \
 | `ane_residency_20260701T024057Z_6f90882a` | scatter int4 clean + prefill int4 | **48.60 t/s**, **0.36% ANE**; 0% decode plan | `results/ane_residency/ane_residency_20260701T024057Z_6f90882a/` |
 | `ane_residency_20260701T025617Z_5fe0d68c` | mask int4 correlation 30 s | **28.13 t/s**, **2.03% ANE** | `results/ane_residency/ane_residency_20260701T025617Z_5fe0d68c/`, `results/compute_plan_analysis/mask_int4_correlation_5fe0d68c_ts.json` |
 | (analysis) | mask int4 compute plan CLI | 95.6% ANE of placed ops | `results/compute_plan_analysis/mask_int4_decode.json`, `mask_int4_powermetrics_ts.json` |
+| `ane_residency_20260701T032704Z_649919bf` | mask int4 **ctx512** @ bench ctx 256 | **47.37 t/s**, 0.78% ANE; 0% plan | `results/ane_residency/ane_residency_20260701T032704Z_649919bf/` |
+| `ane_residency_20260701T031953Z_bbc356a7` | mask int4 ctx512 @ ctx 512 (invalid) | 1.33 t/s — re-prefill thrash | `logs/ane_residency_20260701T031953Z_bbc356a7*` |
+| (analysis) | ctx512 compute plan | **0% ANE** (GPU-only placed) | `results/compute_plan_analysis/mask_int4_ctx512_decode.json` |
 | `ane_residency_20260701T010854Z_a164b6cc` | Failed (pre-fix OOM) | GPU OOM loading both models | `logs/ane_residency_20260701T010854Z_a164b6cc_ctx512.powermetrics.txt` |
+| `ane_residency_20260701T102405Z_fc860526` | **ring int4 512** @ ctx 512 | **38.30 t/s**, **6.70% ANE**, 0 re-prefill; IPJ **3.23** | `results/ane_residency/ane_residency_20260701T102405Z_fc860526/` |
 
 Local-only (not tracked): `models/*.mlpackage/`, `models/qwen2.5-0.5b-decode-kv.pt`.

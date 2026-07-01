@@ -20,6 +20,11 @@ HEAD_DIM = 64
 DEFAULT_MAX_CTX = 1024
 
 
+def _ctx_suffix(max_ctx: int) -> str:
+    """Filename suffix when max_ctx differs from the default export size."""
+    return f"-ctx{max_ctx}" if max_ctx != DEFAULT_MAX_CTX else ""
+
+
 def _import_stack():
     import coremltools as ct
     import torch
@@ -133,7 +138,7 @@ class SliceUpdateKeyValueCache:
         return self.past_seen_tokens
 
 
-def _patch_qwen2_attention(torch, *, use_cache_position: bool = False) -> None:
+def _patch_qwen2_attention(torch, *, use_cache_position: bool = False, ring_size: int = 0) -> None:
     """Install slice-based SDPA attention for exportable KV cache updates."""
     from transformers.models.qwen2.modeling_qwen2 import QWEN2_ATTENTION_CLASSES, Qwen2SdpaAttention
 
@@ -195,8 +200,11 @@ def _patch_qwen2_attention(torch, *, use_cache_position: bool = False) -> None:
 
             if past_key_value is not None:
                 if use_index_copy:
+                    write_position = cache_position
+                    if ring_size > 0:
+                        write_position = cache_position % ring_size
                     cache_kwargs = {
-                        "position": cache_position,
+                        "position": write_position,
                         "kv_write_mode": getattr(past_key_value, "kv_write_mode", "mask"),
                     }
                 else:
@@ -409,6 +417,7 @@ def convert_decode_torch_export_model(
     output_dir: Path,
     max_ctx: int,
     kv_write_mode: str = "mask",
+    ring_size: int = 0,
 ) -> dict:
     """Export decode via torch.export with explicit KV cache I/O (ATEN dialect, no MLState)."""
     from transformers.cache_utils import Cache as HFCache
@@ -417,8 +426,12 @@ def convert_decode_torch_export_model(
         pass
 
     suffix = "-scatter" if kv_write_mode == "scatter" else ""
-    decode_path = output_dir / f"qwen2.5-0.5b-decode-kv-torch-export{suffix}.mlpackage"
-    _patch_qwen2_attention(torch, use_cache_position=True)
+    if ring_size > 0:
+        suffix = f"{suffix}-ring{ring_size}"
+    decode_path = output_dir / (
+        f"qwen2.5-0.5b-decode-kv-torch-export{suffix}{_ctx_suffix(max_ctx)}.mlpackage"
+    )
+    _patch_qwen2_attention(torch, use_cache_position=True, ring_size=ring_size)
 
     class DecodeExplicitKV(torch.nn.Module):
         def __init__(self, mid: str, max_context_size: int, write_mode: str) -> None:
@@ -527,6 +540,7 @@ def convert_decode_torch_export_model(
         "coreml_decode_torch_export_error": coreml_error,
         "export_method": "torch_export" if coreml_ok else "torch_export_failed",
         "kv_write_mode": kv_write_mode,
+        "ring_size": ring_size,
         "kv_cache_shape": list(kv_cache_shape),
         "trace_cache_position": example_pos,
     }
@@ -560,6 +574,7 @@ def convert_kv_models(
     mode: str = "all",
     decode_export_method: str = "mlstate",
     decode_kv_write: str = "mask",
+    ring_size: int = 0,
     skip_validation: bool = False,
 ) -> dict:
     ct, torch, AutoModelForCausalLM = _import_stack()
@@ -575,6 +590,7 @@ def convert_kv_models(
         "mode": mode,
         "decode_export_method": decode_export_method,
         "decode_kv_write": kv_write_mode,
+        "ring_size": ring_size,
     }
 
     hf = None
@@ -615,6 +631,7 @@ def convert_kv_models(
                 output_dir=output_dir,
                 max_ctx=max_ctx,
                 kv_write_mode=kv_write_mode,
+                ring_size=ring_size,
             )
             report.update(te_info)
 
@@ -646,6 +663,12 @@ def main(argv: list[str] | None = None) -> int:
         help="KV slot write for torch.export decode: mask (legacy) or scatter (clean)",
     )
     parser.add_argument(
+        "--ring-size",
+        type=int,
+        default=0,
+        help="Ring buffer capacity baked into torch.export decode (0 = linear growing cache)",
+    )
+    parser.add_argument(
         "--decode-export-method",
         choices=("mlstate", "torch_export", "both"),
         default="mlstate",
@@ -674,6 +697,7 @@ def main(argv: list[str] | None = None) -> int:
             mode=args.mode,
             decode_export_method=args.decode_export_method,
             decode_kv_write=args.decode_kv_write,
+            ring_size=args.ring_size,
             skip_validation=args.skip_validation,
         )
     except Exception:
