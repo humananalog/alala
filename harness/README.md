@@ -31,3 +31,7 @@ python harness/m4_energy_harness.py --mode sram_cliff --model baseline --max-con
 Requires `SUDO_PASSWORD` in repo `.env` (or run with sudo). Optional `MLX_PYTHON` in `.env` if `mlx_lm` is not on the default interpreter.
 
 Logs go to `logs/`; results to `results/`.
+
+## Phase 1 (ANE residency)
+
+Phase 1 benchmarks live in `phase1/` and reuse this harness's powermetrics patterns. See [`phase1/README.md`](../phase1/README.md).

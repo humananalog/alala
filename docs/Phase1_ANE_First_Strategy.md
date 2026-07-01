@@ -1,6 +1,6 @@
 # Phase 1 — ANE-First Execution & Seeding Model
 
-**Status**: Starting (2026-07-01)
+**Status**: Active — first experiment complete (2026-07-01)
 **Goal**: Maximize fraction of forward pass routed to ANE on M4 while maintaining sustainable IPJ and thermal headroom. First milestone: measurable ANE utilization on a small capable model under L_cliff=1024.
 
 ## Physics Constraints from Phase 0
@@ -25,6 +25,28 @@ Measure:
 - Thermal behavior vs current MLX GPU baseline
 
 Success gate: Measurable ANE residency + sustained IPJ within 10% of current MLX path (or better).
+
+## First Experiment Results (2026-07-01)
+
+**Model:** `Qwen/Qwen2.5-0.5B-Instruct` → Core ML via `torch.export` (`phase1/coreml_convert.py`)  
+**Benchmark:** `phase1/ane_residency_benchmark.py` with powermetrics + macmon thermal
+
+| Backend | ctx | Sust. tok/s | ANE proxy | Energy ANE (J) | Temp steady |
+|---------|-----|-------------|-----------|----------------|-------------|
+| MLX 0.5B | 512 | 84.2 | ~0% | 0 | 81.9 °C |
+| Core ML | 512 | 4.2 | **38.0%** | 200 | 62.9 °C |
+| Core ML | 1024 | 3.9 | **11.7%** | 172 | 84.8 °C |
+
+**Runs:** `ane_residency_20260701T001734Z_0bd0328f` (MLX), `ane_residency_20260701T002500Z_d1b410d0` (Core ML)  
+**Artifacts:** `logs/ane_residency_*.jsonl`, `results/ane_residency/<run_id>/`
+
+**Gate assessment:**
+- Measurable ANE residency: **yes** (38% @ ctx 512)
+- ANE > 60% target: **no** (not yet)
+- IPJ within 10% of MLX: **no** (prefill proxy; no KV decode)
+- Thermal compliance: partial (MLX aborted at 92 °C; Core ML post-run flag at 87.7 °C)
+
+**Next:** stateful Core ML decode + KV cache (Apple on-device Llama pattern); re-benchmark IPJ and ANE at ctx 512/1024.
 
 ## Candidate Seeding Models (ranked for first try)
 1. Qwen2.5-0.5B-Instruct (strong instruction following, good convertibility)

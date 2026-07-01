@@ -1,12 +1,12 @@
 ---
-globs: harness/**,experiments/**,**/*.py
+globs: harness/**,phase1/**,experiments/**,**/*.py
 alwaysApply: false
-description: Phase 0 measurement harness and experiment code conventions
+description: Phase 0/1 measurement harness and experiment code conventions
 ---
 
-# Phase 0 Measurement Code
+# Phase 0/1 Measurement Code
 
-Applies to harness, experiments, and Python measurement code.
+Applies to harness, phase1, experiments, and Python measurement code.
 
 ## Before implementing
 Read:
@@ -18,7 +18,12 @@ Read:
 ## Logging
 - All experiments output structured JSONL to `logs/` (see IPJ protocol schema).
 - Include: timestamp, experiment_id, key metrics, temperature, power, notes.
-- Commit `logs/` and `results/` Phase 0 artifacts (powermetrics + JSONL) with benchmark runs.
+- Commit `logs/` and `results/` artifacts (powermetrics + JSONL) with benchmark runs (Phase 0 and `results/ane_residency/`).
+
+## Phase 1 (`phase1/`)
+- `coreml_convert.py`: HF → Core ML via `torch.export`; validate after conversion
+- `ane_residency_benchmark.py`: MLX vs Core ML at ctx 512/1024; use phase1 venv for Core ML runs
+- See `phase1/README.md` and `docs/Phase1_ANE_First_Strategy.md`
 
 ## Harness requirements (`harness/m4_energy_harness.py`)
 - Support modes: `thermal_baseline`, `sram_cliff`, `kv_comparison`

@@ -1,7 +1,7 @@
 # OSLab Execution Playbook — How to Run Alalā
 
-**Version**: 2.1  
-**Date**: 2026-06-30  
+**Version**: 2.2  
+**Date**: 2026-07-01
 **Purpose**: Single practical guide for executing the Alalā program day-to-day on **physical Mac Mini M4 24 GB**.  
 **Primary Executor**: Grok Build (local AI coding agent on the M4).
 
@@ -10,7 +10,7 @@
 ## 1. Daily Rhythm
 
 1. Read `OSLab_Program_Board.md` for current status and blockers.
-2. Check `Phase0_AI_Coder_Task_List.md` (or current phase task list).
+2. Check Program Board active tasks (Phase 1: ANE residency, Core ML decode path).
 3. Execute the next task **on the physical M4** — no simulation or remote hosts.
 4. Log results (structured JSONL + raw `powermetrics` per `IPJ_Measurement_Protocol_Alalā.md`).
 5. Update `OSLab_Program_Board.md` with progress and any new risks.
@@ -36,6 +36,8 @@ All experiments must log:
 - Before/after comparison when applicable
 
 Use `harness/m4_energy_harness.py` modes per `How_to_Run_First_Micro_Benchmark_on_M4_Alalā.md`.
+
+**Phase 1 (active):** Use `phase1/coreml_convert.py` and `phase1/ane_residency_benchmark.py` per `phase1/README.md`. Compare MLX vs Core ML ANE energy share; commit `results/ane_residency/` artifacts.
 
 **Priority**: Thermal headroom and sustained IPJ take precedence over peak throughput.
 

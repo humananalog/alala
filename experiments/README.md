@@ -1,6 +1,8 @@
 # Experiments
 
-Experiment scripts and configs for Phase 0 characterization.
+Experiment scripts and configs for Phase 0 characterization and Phase 1 ANE residency work.
+
+Phase 1 measurement scripts live in `phase1/` (see `phase1/README.md`). Phase 0 harness lives in `harness/`.
 
 Each experiment should follow `docs/Alalā_Experimentation_Framework.md`:
 

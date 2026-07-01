@@ -1,6 +1,6 @@
 # OSLab Program Board — Alalā
 
-**Version**: 1.1  
+**Version**: 1.2
 **Purpose**: Single source of truth for current status, risks, decisions, and progress.
 
 ## Current Phase
