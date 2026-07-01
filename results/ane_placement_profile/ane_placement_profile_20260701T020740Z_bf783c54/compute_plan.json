@@ -1,0 +1,393 @@
+{
+  "environment": {
+    "COREML_DEBUG": null,
+    "COREML_VERBOSE": null,
+    "E5RT_DEBUG": null,
+    "E5RT_LOG_LEVEL": null,
+    "MLTOOLS_VERBOSE": null
+  },
+  "models": [
+    {
+      "compiled_model_path": "/var/folders/xd/mp43c4m52dnflwqw1t92gkd80000gn/T/qwen2.5-0.5b-prefill-kv.mlmodelc",
+      "compute_plan": {
+        "ane_preferred_fraction": 0.3101,
+        "ane_preferred_operator_sample": [
+          "ios16.reduce_mean",
+          "ios18.add",
+          "ios18.concat",
+          "ios18.expand_dims",
+          "ios18.linear",
+          "ios18.mul",
+          "ios18.pow",
+          "ios18.reshape",
+          "ios18.rsqrt",
+          "ios18.scaled_dot_product_attention",
+          "ios18.silu",
+          "ios18.slice_by_index",
+          "ios18.transpose",
+          "tile"
+        ],
+        "cpu_preferred_operator_sample": [],
+        "gpu_preferred_fraction": 0.0833,
+        "gpu_preferred_operator_sample": [
+          "ios16.reduce_mean",
+          "ios18.add",
+          "ios18.gather",
+          "ios18.greater_equal",
+          "ios18.pow",
+          "ios18.slice_by_index",
+          "ios18.slice_update",
+          "select"
+        ],
+        "preferred_device_class": {
+          "ANE": 1254,
+          "GPU": 337
+        },
+        "supported_device_class": {
+          "ANE": 1395,
+          "CPU": 1591,
+          "GPU": 1591
+        },
+        "top_operator_names": [
+          [
+            "const",
+            2453
+          ],
+          [
+            "ios18.mul",
+            266
+          ],
+          [
+            "ios18.slice_by_index",
+            236
+          ],
+          [
+            "ios18.slice_update",
+            192
+          ],
+          [
+            "ios18.linear",
+            169
+          ],
+          [
+            "ios18.add",
+            146
+          ],
+          [
+            "ios18.reshape",
+            144
+          ],
+          [
+            "ios18.transpose",
+            96
+          ],
+          [
+            "ios18.pow",
+            49
+          ],
+          [
+            "ios16.reduce_mean",
+            49
+          ],
+          [
+            "ios18.rsqrt",
+            49
+          ],
+          [
+            "ios18.concat",
+            48
+          ]
+        ],
+        "total_operations": 4044
+      },
+      "compute_unit_enum": "ALL",
+      "compute_units": "all",
+      "inputs": [
+        {
+          "name": "inputIds",
+          "type": "multiArrayType"
+        }
+      ],
+      "load_error": null,
+      "outputs": [
+        {
+          "name": "logits",
+          "type": "multiArrayType"
+        },
+        {
+          "name": "keyCache",
+          "type": "multiArrayType"
+        },
+        {
+          "name": "valueCache",
+          "type": "multiArrayType"
+        }
+      ],
+      "path": "/Users/alexclaw/Projects/alala/models/qwen2.5-0.5b-prefill-kv.mlpackage",
+      "role": "prefill_kv",
+      "source_dialect": "TorchExport::ATEN",
+      "spec_version": 9,
+      "states": []
+    },
+    {
+      "compiled_model_path": "/var/folders/xd/mp43c4m52dnflwqw1t92gkd80000gn/T/qwen2.5-0.5b-decode-kv-torch-export_78A3847C-806B-463D-B659-FD8746F2BCC2.mlmodelc",
+      "compute_plan": {
+        "ane_preferred_fraction": 0.4483,
+        "ane_preferred_operator_sample": [
+          "ios16.reduce_mean",
+          "ios18.add",
+          "ios18.concat",
+          "ios18.expand_dims",
+          "ios18.linear",
+          "ios18.mul",
+          "ios18.pow",
+          "ios18.reshape",
+          "ios18.rsqrt",
+          "ios18.scaled_dot_product_attention",
+          "ios18.silu",
+          "ios18.slice_by_index",
+          "ios18.sub",
+          "ios18.transpose",
+          "tile"
+        ],
+        "cpu_preferred_operator_sample": [],
+        "gpu_preferred_fraction": 0.0125,
+        "gpu_preferred_operator_sample": [
+          "ios16.reduce_mean",
+          "ios18.add",
+          "ios18.cast",
+          "ios18.concat",
+          "ios18.equal",
+          "ios18.expand_dims",
+          "ios18.gather",
+          "ios18.greater_equal",
+          "ios18.linear",
+          "ios18.mul",
+          "ios18.pow",
+          "ios18.reshape",
+          "ios18.rsqrt",
+          "ios18.slice_by_index",
+          "ios18.transpose",
+          "select",
+          "tile"
+        ],
+        "preferred_device_class": {
+          "ANE": 1653,
+          "GPU": 46
+        },
+        "supported_device_class": {
+          "ANE": 1687,
+          "CPU": 1699,
+          "GPU": 1699
+        },
+        "top_operator_names": [
+          [
+            "const",
+            1988
+          ],
+          [
+            "ios18.mul",
+            362
+          ],
+          [
+            "ios18.slice_by_index",
+            236
+          ],
+          [
+            "ios18.add",
+            195
+          ],
+          [
+            "ios18.linear",
+            169
+          ],
+          [
+            "ios18.reshape",
+            146
+          ],
+          [
+            "ios18.expand_dims",
+            98
+          ],
+          [
+            "ios18.transpose",
+            96
+          ],
+          [
+            "ios18.concat",
+            96
+          ],
+          [
+            "tile",
+            96
+          ],
+          [
+            "ios18.pow",
+            49
+          ],
+          [
+            "ios16.reduce_mean",
+            49
+          ]
+        ],
+        "total_operations": 3687
+      },
+      "compute_unit_enum": "ALL",
+      "compute_units": "all",
+      "inputs": [
+        {
+          "name": "inputIds",
+          "type": "multiArrayType"
+        },
+        {
+          "name": "keyCache",
+          "type": "multiArrayType"
+        },
+        {
+          "name": "valueCache",
+          "type": "multiArrayType"
+        },
+        {
+          "name": "cachePosition",
+          "type": "multiArrayType"
+        },
+        {
+          "name": "causalMask",
+          "type": "multiArrayType"
+        }
+      ],
+      "load_error": null,
+      "outputs": [
+        {
+          "name": "logits",
+          "type": "multiArrayType"
+        },
+        {
+          "name": "keyCacheOut",
+          "type": "multiArrayType"
+        },
+        {
+          "name": "valueCacheOut",
+          "type": "multiArrayType"
+        }
+      ],
+      "path": "models/qwen2.5-0.5b-decode-kv-torch-export.mlpackage",
+      "role": "decode_kv",
+      "source_dialect": "TorchExport::ATEN",
+      "spec_version": 9,
+      "states": []
+    },
+    {
+      "compiled_model_path": "/var/folders/xd/mp43c4m52dnflwqw1t92gkd80000gn/T/qwen2.5-0.5b-ane.mlmodelc",
+      "compute_plan": {
+        "ane_preferred_fraction": 0.487,
+        "ane_preferred_operator_sample": [
+          "ios16.reduce_mean",
+          "ios18.add",
+          "ios18.concat",
+          "ios18.expand_dims",
+          "ios18.linear",
+          "ios18.mul",
+          "ios18.pow",
+          "ios18.reshape",
+          "ios18.rsqrt",
+          "ios18.scaled_dot_product_attention",
+          "ios18.silu",
+          "ios18.slice_by_index",
+          "ios18.transpose",
+          "tile"
+        ],
+        "cpu_preferred_operator_sample": [],
+        "gpu_preferred_fraction": 0.0023,
+        "gpu_preferred_operator_sample": [
+          "ios16.reduce_mean",
+          "ios18.add",
+          "ios18.gather",
+          "ios18.greater_equal",
+          "ios18.pow",
+          "select"
+        ],
+        "preferred_device_class": {
+          "ANE": 1253,
+          "GPU": 6
+        },
+        "supported_device_class": {
+          "ANE": 1255,
+          "CPU": 1259,
+          "GPU": 1259
+        },
+        "top_operator_names": [
+          [
+            "const",
+            1314
+          ],
+          [
+            "ios18.mul",
+            266
+          ],
+          [
+            "ios18.linear",
+            169
+          ],
+          [
+            "ios18.add",
+            146
+          ],
+          [
+            "ios18.reshape",
+            144
+          ],
+          [
+            "ios18.transpose",
+            96
+          ],
+          [
+            "ios18.slice_by_index",
+            96
+          ],
+          [
+            "ios18.pow",
+            49
+          ],
+          [
+            "ios16.reduce_mean",
+            49
+          ],
+          [
+            "ios18.rsqrt",
+            49
+          ],
+          [
+            "ios18.concat",
+            48
+          ],
+          [
+            "ios18.expand_dims",
+            48
+          ]
+        ],
+        "total_operations": 2573
+      },
+      "compute_unit_enum": "ALL",
+      "compute_units": "all",
+      "inputs": [
+        {
+          "name": "inputIds",
+          "type": "multiArrayType"
+        }
+      ],
+      "load_error": null,
+      "outputs": [
+        {
+          "name": "logits",
+          "type": "multiArrayType"
+        }
+      ],
+      "path": "/Users/alexclaw/Projects/alala/models/qwen2.5-0.5b-ane.mlpackage",
+      "role": "prefill_only_proxy",
+      "source_dialect": "TorchExport::ATEN",
+      "spec_version": 9,
+      "states": []
+    }
+  ]
+}

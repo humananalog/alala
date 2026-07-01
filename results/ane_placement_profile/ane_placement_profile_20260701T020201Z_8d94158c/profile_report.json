@@ -1,0 +1,27 @@
+{
+  "experiments": [
+    {
+      "load_infos": [],
+      "summary": {
+        "compute_units": "all",
+        "error": "'keyCache'"
+      }
+    }
+  ],
+  "hardware": "Apple M4",
+  "instruments_instructions": [
+    "Open Instruments.app \u2192 Core ML template.",
+    "Select the qwen2.5-0.5b-decode-kv process during a 30-token decode loop.",
+    "Inspect 'Core ML Performance' and 'Neural Engine' lanes for op placement.",
+    "Compare against qwen2.5-0.5b-ane.mlpackage prefill-only proxy at ctx 512."
+  ],
+  "reference_metrics": {
+    "ane_utilization_proxy_pct": 0.11435237710644898,
+    "compute_units": "all",
+    "decode_runtime": "coreml",
+    "tokens_per_second_sustained": 7.45
+  },
+  "reference_run": "ane_residency_20260701T010929Z_830681e7",
+  "run_id": "ane_placement_profile_20260701T020201Z_8d94158c",
+  "timestamp": "2026-07-01T02:04:52Z"
+}

@@ -80,7 +80,8 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 5. **R04** 24 GB working-set pressure
 
 ## Recent Decisions
-- 2026-07-01: ANE placement diagnosis — decode MLState graph gets **0% ANE** in `MLComputePlan`; `CPU_AND_NE` fails ANE compile. Next: `torch.export` re-export. Artifacts + tooling committed to `main`.
+- 2026-07-01: **torch.export decode succeeds** — `qwen2.5-0.5b-decode-kv-torch-export.mlpackage` achieves **44.8% ANE** in `MLComputePlan` (vs 0% MLState). Runtime ANE proxy still ~0.07%; next: int4 quant + graph cleanup. Profile `bf783c54`.
+- 2026-07-01: ANE placement diagnosis — decode MLState graph gets **0% ANE** in `MLComputePlan`; `CPU_AND_NE` fails ANE compile. Superseded for placement by torch.export path.
 - 2026-07-01: Core ML decode export unblocked via MLState (`qwen2.5-0.5b-decode-kv.mlpackage`); first benchmark 7.45 t/s, 0.11% ANE @ ctx 512.
 - 2026-07-01: Phase 1 seeding model — **Qwen2.5-0.5B-Instruct** selected for first ANE conversion attempt (see Seeding Model Decision).
 - 2026-07-01: SRAM cliff detector updated for MLX GPU path (throughput + memory/power signals; ANE % optional).
@@ -177,7 +178,7 @@ None for Phase 0 completion.
 | Phase 0 complete with measured baselines | **Done** |
 | SRAM cliff detector fix | **Done** (2026-07-01) |
 | Core ML conversion helper + ANE residency benchmark scaffold | **Done** (2026-07-01) |
-| Measurable ANE utilization **> 60%** on seeding model | **38%** prefill proxy @ ctx 512; **0%** decode MLState (ANE compile fails) |
+| Measurable ANE utilization **> 60%** on seeding model | **38%** prefill proxy @ ctx 512; **44.8%** decode torch.export plan @ ctx 512; runtime proxy still ~0% |
 | Safe operating region: context ≤ 1024 (or paged KV) + thermal duty cycle | Pending validation |
 | First bounded self-improvement micro-scaffold with IPJ gating | After ANE residency gate |
 
@@ -232,34 +233,35 @@ Stateful decode path landed in `phase1/kv_decode.py` + `--decode` on `ane_reside
 
 ### ANE Placement Status (2026-07-01)
 
-**Diagnosis complete.** `MLComputePlan` shows decode model **0% ANE / 44% GPU** op placement vs prefill proxy **49% ANE**. Forcing `ComputeUnit.CPU_AND_NE` on decode **fails ANE compile** (`ANECCompile() FAILED`); prefill models compile fine.
+**torch.export decode experiment complete.** Re-export via `torch.export` + explicit KV I/O recovers **compile-time ANE placement** on decode. MLState path confirmed as root cause (TorchScript dialect + state ops).
 
-| Artifact | ANE plan % | GPU plan % | `CPU_AND_NE` |
-|----------|------------|------------|--------------|
-| `qwen2.5-0.5b-ane.mlpackage` | 48.7% | 0.2% | ✅ |
-| `qwen2.5-0.5b-prefill-kv.mlpackage` | 31.0% | 8.3% | ✅ |
-| `qwen2.5-0.5b-decode-kv.mlpackage` | **0.0%** | **44.0%** | ❌ ANE compile fail |
+| Artifact | Dialect | ANE plan % | GPU plan % | Sust. t/s | ANE proxy | `CPU_AND_NE` |
+|----------|---------|------------|------------|-----------|-----------|--------------|
+| `qwen2.5-0.5b-ane.mlpackage` | ATEN | 48.7% | 0.2% | — | — | ✅ |
+| `qwen2.5-0.5b-prefill-kv.mlpackage` | ATEN | 31.0% | 8.3% | — | — | ✅ |
+| `qwen2.5-0.5b-decode-kv.mlpackage` (MLState) | TorchScript | **0.0%** | **44.0%** | 7.45 | 0.11% | ❌ ANE compile fail |
+| **`qwen2.5-0.5b-decode-kv-torch-export.mlpackage`** | **ATEN** | **44.8%** | **1.3%** | **7.93** | **0.067%** | ⚠️ not confirmed |
 
-Measured decode ANE proxy: **0.11%** (`830681e7`), **0.41%** (profile `e43e6053` after warmup). Reference run used `ComputeUnit.ALL`, no Core ML debug env vars.
+Profile run: `ane_placement_profile_20260701T020740Z_bf783c54` (`ComputeUnit.ALL`, ctx 512). Decode loop runs end-to-end via `kv_decode.py` torch_export path.
 
-**Suspected causes (ranked):** (1) MLState `read_state`/`slice_update` graph rejected by ANE compiler; (2) TorchScript vs torch.export dialect; (3) dynamic `causalMask` shape; (4) stateful cache RMW footprint.
+**Gap:** Compute plan shows 44.8% ANE but powermetrics proxy ~0.07% (GPU 1158 J vs ANE 1.0 J per profile). Planner vs runtime mismatch — likely KV tensor I/O + mask-update ops dominate execution.
 
-**Next:** Re-export decode via `torch.export` (ATEN); try fixed-shape mask / explicit cache I/O; int4 quant; Instruments Core ML template confirmation.
+**Decision:** ANE plan improvement **>15%** threshold met → pursue **int4 quant**, mask-write graph cleanup, Instruments confirmation. If runtime ANE proxy stays &lt;5% post-optimization, pivot to hybrid (ANE prefill + fast non-CoreML decode).
 
 **Tracked artifacts (main @ 2026-07-01):**
-- `results/ane_residency/ane_residency_20260701T010929Z_830681e7/` — first MLState decode benchmark
-- `results/ane_placement_profile/ane_placement_profile_20260701T012500Z_e43e6053/` — compute plan + profile report
-- `logs/ane_residency_20260701T010854Z_a164b6cc_ctx512.powermetrics.txt` — pre-fix GPU OOM attempt
+- `results/ane_placement_profile/ane_placement_profile_20260701T020740Z_bf783c54/` — torch.export decode profile + compute plan
+- `results/ane_residency/ane_residency_20260701T010929Z_830681e7/` — MLState decode benchmark (baseline)
+- `results/ane_placement_profile/ane_placement_profile_20260701T012500Z_e43e6053/` — MLState compute plan
 
-**Gaps:** (1) Achieve ANE-eligible decode graph (target 30%+ proxy); (2) Restore throughput ≥ TorchScript; (3) ctx 1024 OOM on recycle; (4) IPJ once ANE routing fixed.
+**Gaps:** (1) Close planner/runtime ANE gap; (2) Restore throughput ≥ TorchScript (35 t/s); (3) ctx 1024 OOM on recycle; (4) IPJ once runtime ANE routing confirmed.
 
 ### Success Metrics (First Experiment)
 
 | Metric | Target | Status (2026-07-01) |
 |--------|--------|---------------------|
-| ANE utilization | **> 0%** first run; **> 60%** gate | **38%** prefill proxy @512; **0.11%** MLState decode @512 |
-| Sustained IPJ | Within **10%** of MLX baseline (or better) | **Not met** — decode on GPU, not ANE |
-| Sustained throughput | Document tok/s at ctx 512 and 1024 | MLX decode 106.7; Core ML MLState decode **7.45** @512 (TorchScript fallback 35.0) |
+| ANE utilization | **> 0%** first run; **> 60%** gate | **38%** prefill proxy @512; **44.8%** torch.export decode plan @512; runtime proxy **0.07%** |
+| Sustained IPJ | Within **10%** of MLX baseline (or better) | **Not met** — runtime decode energy GPU-dominated |
+| Sustained throughput | Document tok/s at ctx 512 and 1024 | MLX 106.7; torch.export decode **7.93** @512; MLState 7.45; TorchScript 35.0 |
 | Thermal compliance | Steady-state **≤ 85°C** | MLX aborted 92°C; Core ML completed with post-run abort 87.7°C |
 | Energy attribution | ANE / CPU / GPU joules per step | **Done** — Core ML 200 J ANE @ ctx 512 |
 

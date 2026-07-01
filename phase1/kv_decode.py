@@ -66,6 +66,15 @@ def _causal_mask(end_step: int) -> np.ndarray:
     return np.zeros((1, 1, 1, end_step), dtype=np.float16)
 
 
+def _fixed_causal_mask(max_ctx: int) -> np.ndarray:
+    """Fixed-width causal mask for torch.export decode (static-friendly)."""
+    return np.zeros((1, 1, 1, max_ctx), dtype=np.float16)
+
+
+def _decode_input_names(model) -> set[str]:
+    return {i.name for i in model.get_spec().description.input}
+
+
 def _resolve_decode_backend(
     decode_path: Path,
     decode_pt_path: Path | None,
@@ -87,13 +96,16 @@ def _resolve_decode_backend(
             raise RuntimeError(f"Failed to load decode model {decode_path}: {info.load_error}")
         if log_model_load:
             log_load_info(info)
-        return "coreml", model, model.make_state()
+        input_names = _decode_input_names(model)
+        if "cachePosition" in input_names:
+            return "coreml", model, None, "torch_export"
+        return "coreml", model, model.make_state(), "mlstate"
 
     pt_path = decode_pt_path or DEFAULT_DECODE_PT
     if pt_path.exists():
         import torch
 
-        return "torchscript", torch.jit.load(str(pt_path)).eval(), None
+        return "torchscript", torch.jit.load(str(pt_path)).eval(), None, "torchscript"
 
     raise RuntimeError(
         f"No decode artifact found. Expected {decode_path} or {pt_path}. "
@@ -150,7 +162,7 @@ def run_coreml_decode_loop(
     prompt[0, :context_length] = rng.integers(1, 5000, size=context_length, dtype=np.int32)
 
     def _seed_decode_state(key_cache: np.ndarray, value_cache: np.ndarray) -> None:
-        if decode_runtime == "coreml" and decode_state is not None:
+        if decode_runtime == "coreml" and decode_style == "mlstate" and decode_state is not None:
             # Core ML state write accepts fp32 copies of prefill cache tensors.
             decode_state.write_state(
                 "keyCache", np.ascontiguousarray(key_cache, dtype=np.float32)
@@ -167,17 +179,19 @@ def run_coreml_decode_loop(
     logits = np.array(prefill_out["logits"])
     next_token = _greedy_token(logits[:, context_length - 1 : context_length, :])
 
-    decode_runtime, decode_runner, decode_state = _resolve_decode_backend(
+    decode_runtime, decode_runner, decode_state, decode_style = _resolve_decode_backend(
         decode_path,
         decode_pt_path,
         compute_units=compute_units,
         log_model_load=log_model_load,
     )
     _seed_decode_state(key_cache, value_cache)
+    fixed_mask = _fixed_causal_mask(max_ctx) if decode_style == "torch_export" else None
     if log_model_load:
         logger.info(
-            "decode_loop config: compute_units=%s context_length=%d max_ctx=%d",
+            "decode_loop config: compute_units=%s decode_style=%s context_length=%d max_ctx=%d",
             compute_units,
+            decode_style,
             context_length,
             max_ctx,
         )
@@ -201,13 +215,28 @@ def run_coreml_decode_loop(
 
         end_step = cache_seq_len + 1
         if decode_runtime == "coreml":
-            decode_out = decode_runner.predict(
-                {
-                    "inputIds": np.array([[next_token]], dtype=np.int32),
-                    "causalMask": _causal_mask(end_step),
-                },
-                state=decode_state,
-            )
+            if decode_style == "torch_export":
+                decode_out = decode_runner.predict(
+                    {
+                        "inputIds": np.array([[next_token]], dtype=np.int32),
+                        "keyCache": np.ascontiguousarray(key_cache, dtype=np.float16),
+                        "valueCache": np.ascontiguousarray(value_cache, dtype=np.float16),
+                        "cachePosition": np.array([cache_seq_len], dtype=np.int32),
+                        "causalMask": fixed_mask,
+                    }
+                )
+                key_out_name = "keyCacheOut" if "keyCacheOut" in decode_out else "keyCache"
+                value_out_name = "valueCacheOut" if "valueCacheOut" in decode_out else "valueCache"
+                key_cache = np.array(decode_out[key_out_name], dtype=np.float16)
+                value_cache = np.array(decode_out[value_out_name], dtype=np.float16)
+            else:
+                decode_out = decode_runner.predict(
+                    {
+                        "inputIds": np.array([[next_token]], dtype=np.int32),
+                        "causalMask": _causal_mask(end_step),
+                    },
+                    state=decode_state,
+                )
             step_logits = np.array(decode_out["logits"])
         else:
             import torch as th
@@ -239,7 +268,7 @@ def run_coreml_decode_loop(
         peak_memory_gb=None,
         kv_cache_active=True,
         backend="coreml",
-        decode_runtime=decode_runtime,
+        decode_runtime=f"{decode_runtime}:{decode_style}" if decode_runtime else decode_style,
     )
 
 

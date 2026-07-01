@@ -11,7 +11,7 @@ Measurement and conversion tooling for Phase 1 ANE-first execution on Mac Mini M
 | File | Purpose |
 |------|---------|
 | `coreml_convert.py` | Prefill-only HF → Core ML (no KV; `torch.export`) |
-| `coreml_kv_convert.py` | Prefill-kv + MLState decode-kv export (`--mode all\|prefill\|decode`) |
+| `coreml_kv_convert.py` | Prefill-kv + MLState decode + `torch.export` decode (`--mode decode_torch_export`) |
 | `kv_decode.py` | Stateful decode loops (MLX + Core ML prefill/decode hand-off) |
 | `coreml_instrumentation.py` | `ComputeUnit` loading, metadata + `MLComputePlan` logging |
 | `ane_residency_benchmark.py` | MLX vs Core ML benchmark with powermetrics + JSONL |
@@ -38,12 +38,16 @@ Converted `.mlpackage` files are **gitignored** (`models/*.mlpackage/`). Regener
 phase1/.venv/bin/python phase1/coreml_kv_convert.py \
   --output-dir models --max-ctx 1024
 
-# Decode only (after prefill-kv exists)
+# MLState decode only (after prefill-kv exists)
 phase1/.venv/bin/python phase1/coreml_kv_convert.py \
   --mode decode --output-dir models --max-ctx 1024
+
+# torch.export decode (explicit KV I/O, ATEN dialect — recommended for ANE placement)
+phase1/.venv/bin/python phase1/coreml_kv_convert.py \
+  --mode decode_torch_export --output-dir models --max-ctx 1024
 ```
 
-Artifacts: `models/qwen2.5-0.5b-prefill-kv.mlpackage`, `models/qwen2.5-0.5b-decode-kv.mlpackage`.
+Artifacts: `models/qwen2.5-0.5b-prefill-kv.mlpackage`, `models/qwen2.5-0.5b-decode-kv.mlpackage` (MLState), `models/qwen2.5-0.5b-decode-kv-torch-export.mlpackage` (torch.export).
 
 ## Run ANE residency benchmark
 
@@ -71,7 +75,8 @@ phase1/.venv/bin/python phase1/ane_residency_benchmark.py \
 
 ```bash
 PYTHONPATH=phase1 phase1/.venv/bin/python phase1/ane_placement_profile.py \
-  --compute-units all --context 512 --profile-tokens 25
+  --decode-kv models/qwen2.5-0.5b-decode-kv-torch-export.mlpackage \
+  --max-ctx 1024 --compute-units all --context 512 --profile-tokens 30
 ```
 
 Outputs: `results/ane_placement_profile/<run_id>/profile_report.json`, `compute_plan.json`, `logs/ane_placement_profile_<cu>_ctx<ctx>.powermetrics.txt`.
@@ -95,12 +100,13 @@ Run: `ane_residency_20260701T002500Z_d1b410d0`
 | MLX | mlx_lm | 512 | 106.7 | ~0% |
 | Core ML | TorchScript `.pt` | 512 | 35.0 | 0.3% |
 | Core ML | **MLState `.mlpackage`** | 512 | 7.45 | **0.11%** |
+| Core ML | **torch.export `.mlpackage`** | 512 | 7.93 | **0.067%** |
 
-Runs: `ane_residency_20260701T005247Z_b8d6539e` (TorchScript), `ane_residency_20260701T010929Z_830681e7` (MLState).
+Runs: `ane_residency_20260701T005247Z_b8d6539e` (TorchScript), `ane_residency_20260701T010929Z_830681e7` (MLState), `ane_placement_profile_20260701T020740Z_bf783c54` (torch.export).
 
-**ANE placement diagnosis:** `MLComputePlan` shows decode **0% ANE / 44% GPU** vs prefill proxy **49% ANE**. `CPU_AND_NE` on decode fails ANE compile (`ANECCompile() FAILED`). See `NOTES.md` and Program Board § ANE Placement Status.
+**ANE placement:** MLState decode **0% ANE / 44% GPU** in compute plan; **torch.export decode 44.8% ANE / 1.3% GPU** (`TorchExport::ATEN`). Runtime ANE proxy still ~0% on both — see `NOTES.md` and Program Board § ANE Placement Status.
 
-Profile run `ane_placement_profile_20260701T012500Z_e43e6053`: 17.83 t/s, 0.41% ANE (warmed; still GPU-dominated).
+Profile runs: `e43e6053` (MLState, 0% plan), `bf783c54` (torch.export, **44.8% plan**).
 
 ## Tracked artifacts
 

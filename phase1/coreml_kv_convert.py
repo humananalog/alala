@@ -46,7 +46,15 @@ class SliceUpdateKeyValueCache:
     dynamic tensor indexing that breaks coremltools conversion.
     """
 
-    def __init__(self, shape: Tuple[int, ...], device="cpu", dtype=None) -> None:
+    def __init__(
+        self,
+        shape: Tuple[int, ...],
+        device="cpu",
+        dtype=None,
+        *,
+        k_cache=None,
+        v_cache=None,
+    ) -> None:
         import torch
         from transformers.cache_utils import Cache
 
@@ -54,8 +62,12 @@ class SliceUpdateKeyValueCache:
         if super_init:
             Cache.__init__(self)
         self.past_seen_tokens: int = 0
-        self.k_cache = torch.zeros(shape, dtype=dtype, device=device)
-        self.v_cache = torch.zeros(shape, dtype=dtype, device=device)
+        if k_cache is not None and v_cache is not None:
+            self.k_cache = k_cache
+            self.v_cache = v_cache
+        else:
+            self.k_cache = torch.zeros(shape, dtype=dtype, device=device)
+            self.v_cache = torch.zeros(shape, dtype=dtype, device=device)
 
     def update(
         self,
@@ -65,7 +77,35 @@ class SliceUpdateKeyValueCache:
         cache_kwargs=None,
     ) -> Tuple:
         if cache_kwargs is None:
-            raise ValueError("slice_indices required in cache_kwargs")
+            raise ValueError("cache_kwargs required")
+        if "position" in cache_kwargs:
+            import torch
+
+            def _write_slot(layer_cache, token_states, position):
+                seq_len = layer_cache.shape[2]
+                idx = torch.arange(seq_len, device=layer_cache.device, dtype=torch.int32).reshape(
+                    1, 1, -1, 1
+                )
+                pos = position.reshape(1, 1, 1, 1).to(torch.int32)
+                slot_mask = (idx == pos).to(layer_cache.dtype)
+                token_broadcast = token_states.expand(-1, -1, seq_len, -1)
+                return layer_cache * (1.0 - slot_mask) + token_broadcast * slot_mask
+
+            # torch.export path: mask-based slot write + out-of-place layer cat.
+            position = cache_kwargs["position"].to(dtype=torch.int32).reshape(-1)
+            layer_k = self.k_cache[layer_idx]
+            layer_v = self.v_cache[layer_idx]
+            new_layer_k = _write_slot(layer_k, k_state, position)
+            new_layer_v = _write_slot(layer_v, v_state, position)
+            self.k_cache = torch.cat(
+                (self.k_cache[:layer_idx], new_layer_k.unsqueeze(0), self.k_cache[layer_idx + 1 :]),
+                dim=0,
+            )
+            self.v_cache = torch.cat(
+                (self.v_cache[:layer_idx], new_layer_v.unsqueeze(0), self.v_cache[layer_idx + 1 :]),
+                dim=0,
+            )
+            return new_layer_k, new_layer_v
         begin, end = cache_kwargs["slice_indices"]
         self.k_cache[layer_idx, :, : k_state.shape[1], begin:end, :] = k_state
         self.v_cache[layer_idx, :, : v_state.shape[1], begin:end, :] = v_state
@@ -80,7 +120,7 @@ class SliceUpdateKeyValueCache:
         return self.past_seen_tokens
 
 
-def _patch_qwen2_attention(torch) -> None:
+def _patch_qwen2_attention(torch, *, use_cache_position: bool = False) -> None:
     """Install slice-based SDPA attention for exportable KV cache updates."""
     from transformers.models.qwen2.modeling_qwen2 import QWEN2_ATTENTION_CLASSES, Qwen2SdpaAttention
 
@@ -125,8 +165,14 @@ def _patch_qwen2_attention(torch) -> None:
             key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
             value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
-            end_step = attention_mask.shape[-1]
-            past_kv_len = end_step - q_len
+            use_index_copy = False
+            if use_cache_position and cache_position is not None:
+                use_index_copy = True
+                past_kv_len = 0
+                end_step = attention_mask.shape[-1]
+            else:
+                end_step = attention_mask.shape[-1]
+                past_kv_len = end_step - q_len
             half_dim = self.head_dim // 2
 
             cos, sin = self.rotary_emb(value_states, seq_len=self.rotary_emb.max_position_embeddings)
@@ -135,11 +181,15 @@ def _patch_qwen2_attention(torch) -> None:
             )
 
             if past_key_value is not None:
+                if use_index_copy:
+                    cache_kwargs = {"position": cache_position}
+                else:
+                    cache_kwargs = {"slice_indices": (past_kv_len, end_step)}
                 key_states, value_states = past_key_value.update(
                     key_states,
                     value_states,
                     self.layer_idx,
-                    cache_kwargs={"slice_indices": (past_kv_len, end_step)},
+                    cache_kwargs=cache_kwargs,
                 )
 
             key_states = repeat_kv_const(
@@ -150,7 +200,7 @@ def _patch_qwen2_attention(torch) -> None:
             )
 
             causal_mask = attention_mask
-            if attention_mask is not None:
+            if attention_mask is not None and not use_index_copy:
                 causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
 
             dtype = query_states.dtype
@@ -334,21 +384,169 @@ def convert_decode_model(*, model_id: str, ct, torch, AutoModelForCausalLM, outp
     return report
 
 
+def convert_decode_torch_export_model(
+    *,
+    model_id: str,
+    ct,
+    torch,
+    AutoModelForCausalLM,
+    output_dir: Path,
+    max_ctx: int,
+) -> dict:
+    """Export decode via torch.export with explicit KV cache I/O (ATEN dialect, no MLState)."""
+    from transformers.cache_utils import Cache as HFCache
+
+    class SliceKVCache(SliceUpdateKeyValueCache, HFCache):
+        pass
+
+    decode_path = output_dir / "qwen2.5-0.5b-decode-kv-torch-export.mlpackage"
+    _patch_qwen2_attention(torch, use_cache_position=True)
+
+    class DecodeExplicitKV(torch.nn.Module):
+        def __init__(self, mid: str, max_context_size: int) -> None:
+            super().__init__()
+            self.max_context_size = max_context_size
+            self.model = AutoModelForCausalLM.from_pretrained(
+                mid, torch_dtype=torch.float16, attn_implementation="sdpa"
+            )
+            config = self.model.config
+            head_dim = getattr(config, "head_dim", config.hidden_size // config.num_attention_heads)
+            self.kv_cache_shape = (
+                config.num_hidden_layers,
+                1,
+                config.num_key_value_heads,
+                max_context_size,
+                head_dim,
+            )
+
+        @torch.no_grad()
+        def forward(
+            self,
+            input_ids: torch.Tensor,
+            key_cache: torch.Tensor,
+            value_cache: torch.Tensor,
+            cache_position: torch.Tensor,
+            causal_mask: torch.Tensor,
+        ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            # Functional cache: wrap input tensors only (no module attribute mutation).
+            kv_cache = SliceKVCache(
+                shape=self.kv_cache_shape,
+                k_cache=key_cache,
+                v_cache=value_cache,
+            )
+            logits = self.model(
+                input_ids.long(),
+                attention_mask=causal_mask,
+                past_key_values=kv_cache,
+                use_cache=True,
+                cache_position=cache_position.reshape(-1),
+                position_ids=cache_position.reshape(1, -1),
+            ).logits
+            return logits, kv_cache.k_cache, kv_cache.v_cache
+
+    torch_model = DecodeExplicitKV(model_id, max_context_size=max_ctx).eval()
+    kv_cache_shape = torch_model.kv_cache_shape
+
+    example_pos = min(512, max_ctx - 1)
+    example_in = (
+        torch.zeros((1, 1), dtype=torch.int32),
+        torch.zeros(kv_cache_shape, dtype=torch.float16),
+        torch.zeros(kv_cache_shape, dtype=torch.float16),
+        torch.tensor([example_pos], dtype=torch.int32),
+        torch.zeros((1, 1, 1, max_ctx), dtype=torch.float16),
+    )
+
+    coreml_ok = False
+    coreml_error: str | None = None
+    export_error: str | None = None
+    exported = None
+    try:
+        exported = torch.export.export(torch_model, example_in).run_decompositions({})
+    except Exception as exc:
+        export_error = str(exc)
+        logger.warning("torch.export decode failed: %s", exc)
+
+    if exported is not None:
+        cache_pos_dim = ct.RangeDim(lower_bound=0, upper_bound=max_ctx - 1, default=example_pos)
+        try:
+            decode_ml = ct.convert(
+                exported,
+                inputs=[
+                    ct.TensorType(shape=(1, 1), dtype=np.int32, name="inputIds"),
+                    ct.TensorType(shape=kv_cache_shape, dtype=np.float16, name="keyCache"),
+                    ct.TensorType(shape=kv_cache_shape, dtype=np.float16, name="valueCache"),
+                    ct.TensorType(shape=(1,), dtype=np.int32, name="cachePosition"),
+                    ct.TensorType(shape=(1, 1, 1, max_ctx), dtype=np.float16, name="causalMask"),
+                ],
+                outputs=[
+                    ct.TensorType(dtype=np.float16, name="logits"),
+                    ct.TensorType(dtype=np.float16, name="keyCacheOut"),
+                    ct.TensorType(dtype=np.float16, name="valueCacheOut"),
+                ],
+                convert_to="mlprogram",
+                minimum_deployment_target=ct.target.macOS15,
+                skip_model_load=True,
+            )
+            decode_ml.save(str(decode_path))
+            coreml_ok = True
+            logger.info("Saved torch.export Core ML decode %s", decode_path)
+        except Exception as exc:
+            coreml_error = str(exc)
+            logger.warning("torch.export Core ML convert failed: %s", exc)
+
+    report = {
+        "decode_torch_export_path": str(decode_path) if coreml_ok else None,
+        "coreml_decode_torch_export_ok": coreml_ok,
+        "torch_export_error": export_error,
+        "coreml_decode_torch_export_error": coreml_error,
+        "export_method": "torch_export" if coreml_ok else "torch_export_failed",
+        "kv_cache_shape": list(kv_cache_shape),
+        "trace_cache_position": example_pos,
+    }
+
+    if coreml_ok and not getattr(convert_decode_torch_export_model, "_skip_validation", False):
+        try:
+            mlmodel = ct.models.MLModel(str(decode_path), compute_units=ct.ComputeUnit.ALL)
+            out = mlmodel.predict(
+                {
+                    "inputIds": np.array([[1]], dtype=np.int32),
+                    "keyCache": np.zeros(kv_cache_shape, dtype=np.float16),
+                    "valueCache": np.zeros(kv_cache_shape, dtype=np.float16),
+                    "cachePosition": np.array([0], dtype=np.int32),
+                    "causalMask": np.zeros((1, 1, 1, max_ctx), dtype=np.float16),
+                }
+            )
+            report["decode_logits_shape"] = list(np.array(out["logits"]).shape)
+        except Exception as exc:
+            report["validation_error"] = str(exc)
+            logger.warning("torch.export decode validation failed: %s", exc)
+
+    del torch_model
+    return report
+
+
 def convert_kv_models(
     *,
     model_id: str,
     output_dir: Path,
     max_ctx: int = DEFAULT_MAX_CTX,
     mode: str = "all",
+    decode_export_method: str = "mlstate",
     skip_validation: bool = False,
 ) -> dict:
     ct, torch, AutoModelForCausalLM = _import_stack()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     prefill_only = mode == "prefill"
-    decode_only = mode == "decode"
+    decode_only = mode in ("decode", "decode_torch_export")
+    decode_torch_export_only = mode == "decode_torch_export" or decode_export_method == "torch_export"
 
-    report: dict = {"model_id": model_id, "max_ctx": max_ctx, "mode": mode}
+    report: dict = {
+        "model_id": model_id,
+        "max_ctx": max_ctx,
+        "mode": mode,
+        "decode_export_method": decode_export_method,
+    }
 
     hf = None
     if not decode_only:
@@ -360,16 +558,29 @@ def convert_kv_models(
         report["prefill_path"] = str(prefill_path)
 
     if not prefill_only:
-        convert_decode_model._skip_validation = skip_validation  # type: ignore[attr-defined]
-        decode_info = convert_decode_model(
-            model_id=model_id,
-            ct=ct,
-            torch=torch,
-            AutoModelForCausalLM=AutoModelForCausalLM,
-            output_dir=output_dir,
-            max_ctx=max_ctx,
-        )
-        report.update(decode_info)
+        if decode_export_method in ("mlstate", "both") and mode != "decode_torch_export":
+            convert_decode_model._skip_validation = skip_validation  # type: ignore[attr-defined]
+            decode_info = convert_decode_model(
+                model_id=model_id,
+                ct=ct,
+                torch=torch,
+                AutoModelForCausalLM=AutoModelForCausalLM,
+                output_dir=output_dir,
+                max_ctx=max_ctx,
+            )
+            report.update(decode_info)
+
+        if decode_export_method in ("torch_export", "both") or mode == "decode_torch_export":
+            convert_decode_torch_export_model._skip_validation = skip_validation  # type: ignore[attr-defined]
+            te_info = convert_decode_torch_export_model(
+                model_id=model_id,
+                ct=ct,
+                torch=torch,
+                AutoModelForCausalLM=AutoModelForCausalLM,
+                output_dir=output_dir,
+                max_ctx=max_ctx,
+            )
+            report.update(te_info)
 
     if not skip_validation and report.get("prefill_path"):
         pm = ct.models.MLModel(str(report["prefill_path"]), compute_units=ct.ComputeUnit.ALL)
@@ -388,12 +599,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-ctx", type=int, default=DEFAULT_MAX_CTX)
     parser.add_argument(
         "--mode",
-        choices=("all", "prefill", "decode"),
+        choices=("all", "prefill", "decode", "decode_torch_export"),
         default="all",
-        help="Export prefill only, decode only, or both",
+        help="Export prefill, MLState decode, torch.export decode, or all",
+    )
+    parser.add_argument(
+        "--decode-export-method",
+        choices=("mlstate", "torch_export", "both"),
+        default="mlstate",
+        help="Decode export path when --mode all|decode (default: mlstate only)",
     )
     parser.add_argument("--prefill-only", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--decode-only", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--decode-torch-export-only", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--skip-validation", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
@@ -401,6 +619,8 @@ def main(argv: list[str] | None = None) -> int:
         args.mode = "prefill"
     if args.decode_only:
         args.mode = "decode"
+    if args.decode_torch_export_only:
+        args.mode = "decode_torch_export"
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s: %(message)s")
     try:
         report = convert_kv_models(
@@ -408,6 +628,7 @@ def main(argv: list[str] | None = None) -> int:
             output_dir=args.output_dir,
             max_ctx=args.max_ctx,
             mode=args.mode,
+            decode_export_method=args.decode_export_method,
             skip_validation=args.skip_validation,
         )
     except Exception:
@@ -416,7 +637,17 @@ def main(argv: list[str] | None = None) -> int:
     print("KV conversion complete:")
     for k, v in report.items():
         print(f"  {k}: {v}")
-    return 0 if report.get("coreml_decode_ok", True) else 1
+    ok = True
+    if report.get("coreml_decode_ok") is False and report.get("mode") in ("decode", "all"):
+        ok = False
+    if report.get("coreml_decode_torch_export_ok") is False and report.get("mode") in (
+        "decode_torch_export",
+        "all",
+    ):
+        ok = False
+    if report.get("mode") == "decode_torch_export":
+        ok = report.get("coreml_decode_torch_export_ok", False)
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

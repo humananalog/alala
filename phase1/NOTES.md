@@ -129,31 +129,88 @@ Instrumentation added in `phase1/coreml_instrumentation.py`; benchmark logs load
 2. Run `phase1/ane_placement_profile.py` or `ane_residency_benchmark.py --profile --backend coreml --decode`.
 3. Compare decode process op placement vs `qwen2.5-0.5b-ane.mlpackage` prefill proxy.
 
-### Next steps (from diagnosis)
+### torch.export decode experiment (2026-07-01)
 
-1. Re-export decode with `torch.export` + ATEN dialect (match prefill path).
-2. Explore KV as explicit I/O (no MLState) with fixed-shape masks if ANE compiles.
-3. Apply Mistral-style int4 weight quant post-export.
-4. Reduce dynamic ranks in `causalMask` (fixed `end_step=1024` + mask padding).
-5. File Apple FB if `read_state`/`slice_update` SDPA graphs are expected to be ANE-eligible.
+**Export:** `phase1/coreml_kv_convert.py --mode decode_torch_export --max-ctx 1024`  
+**Artifact:** `models/qwen2.5-0.5b-decode-kv-torch-export.mlpackage` ✅  
+**Dialect:** `TorchExport::ATEN` (matches prefill-kv)
+
+| Direction | Name | Shape | Notes |
+|-----------|------|-------|-------|
+| In | `inputIds` | `(1, 1)` | int32 single new token |
+| In | `keyCache` | `(24, 1, 2, 1024, 64)` | fp16; from prefill output |
+| In | `valueCache` | `(24, 1, 2, 1024, 64)` | fp16; from prefill output |
+| In | `cachePosition` | `(1,)` | int32; index of next write slot |
+| In | `causalMask` | `(1, 1, 1, 1024)` | fp16 fixed width; zeros = attend |
+| Out | `logits` | `(1, 1, 151936)` | fp16 |
+| Out | `keyCacheOut` | `(24, 1, 2, 1024, 64)` | fp16 updated cache (renamed to avoid I/O name collision) |
+| Out | `valueCacheOut` | `(24, 1, 2, 1024, 64)` | fp16 updated cache |
+
+**Workarounds required for `torch.export`:**
+
+1. **No module-attribute mutation** — functional `SliceKVCache` wrapper per forward; out-of-place `torch.cat` per layer.
+2. **No tensor slice bounds** — mask-based slot write (`idx == position`) instead of `k_cache[..., begin:end, :]`.
+3. **`index_copy` unsupported in coremltools** — mask write pattern used instead (adds `equal`/`tile`/`mul` ops).
+4. **Input/output name collision** — Core ML rejects `keyCache` as both input and output; outputs named `keyCacheOut` / `valueCacheOut`.
+5. **Fixed `causalMask` width** — `max_ctx` constant shape; validity enforced by mask content + full-cache SDPA (not dynamic `end_step` slice).
+6. **`cachePosition` drives RoPE** — attention patch uses `cache_position` tensor instead of `causalMask.shape[-1]`.
+
+**Export failures encountered (resolved):**
+
+| Stage | Error | Fix |
+|-------|-------|-----|
+| `torch.export` | `Mutating module attribute k_cache` | Functional cache wrapper, no `self.kv_cache.k_cache = …` |
+| `torch.export` | `Dynamic slicing with Tensor arguments` | Mask-based slot write + fixed mask width |
+| `torch.export` | `graph input … received a mutation` | Out-of-place layer `cat` instead of in-place cache writes |
+| `coremltools` | `Unsupported fx node index_copy` | Mask-based slot write |
+| `coremltools` | `keyCache` used as input and output | Rename outputs to `keyCacheOut` / `valueCacheOut` |
+
+### Export method comparison (decode @ ctx 512, M4 24 GB)
+
+| Method | Dialect | ANE plan % | GPU plan % | `CPU_AND_NE` | Sust. t/s | ANE proxy | Ops |
+|--------|---------|------------|------------|--------------|-----------|-----------|-----|
+| TorchScript `.pt` | TorchScript | — | — | — | **35.0** | 0.3% | — |
+| MLState `.mlpackage` | TorchScript | **0.0%** | **44.0%** | ❌ ANE compile fail | 7.45 | 0.11% | 5165 |
+| **torch.export `.mlpackage`** | **TorchExport::ATEN** | **44.8%** | **1.3%** | ⚠️ not confirmed (disk) | **7.93** | **0.067%** | 3687 |
+
+Profile run: `ane_placement_profile_20260701T020740Z_bf783c54` (`ComputeUnit.ALL`, ctx 512, 30-token target).
+
+**Key finding:** `torch.export` recovers **compile-time ANE placement** (44.8% vs 0% MLState) — hypothesis #2 confirmed. Runtime ANE energy proxy remains **~0%** (GPU joules dominate: 1158 J GPU vs 1.0 J ANE in profile). Planner vs runtime gap likely due to large KV tensor I/O per step and mask-update overhead (`equal`/`tile` chains).
+
+### Recommendation (2026-07-01)
+
+**Compute-plan ANE placement improved meaningfully (>15–20%).** Continue optimizing the torch.export decode path rather than abandoning to hybrid:
+
+1. **int4 weight quant** post-export (Mistral-style) — reduce memory bandwidth + graph size.
+2. **Graph cleanup** — replace mask-based slot write with ANE-friendlier scatter/slice_update if exportable; prune `equal`/`tile` chains.
+3. **Runtime ANE validation** — Instruments Core ML template to confirm planner vs execution placement; re-run powermetrics after quant.
+4. **Throughput** — investigate KV I/O cost (2× 24×1024×64 fp16 copies per step); consider slimmer cache layout or stateful hybrid only for cache storage.
+5. **Re-test `CPU_AND_NE`** once disk cache cleared — MLState failed outright; torch.export may compile.
+
+If runtime ANE proxy stays &lt;5% after quant + cleanup, pivot to **hybrid architecture** (Core ML ANE prefill + optimized non-CoreML decode for throughput).
 
 ## Tooling and commands
 
 | Script | Purpose |
 |--------|---------|
-| `coreml_kv_convert.py` | Export prefill-kv + MLState decode-kv |
+| `coreml_kv_convert.py` | Export prefill-kv + MLState decode + `--mode decode_torch_export` |
 | `coreml_instrumentation.py` | Load models with logged `ComputeUnit` + `MLComputePlan` |
 | `ane_residency_benchmark.py` | Full benchmark; `--compute-units`, `--profile` |
 | `ane_placement_profile.py` | Short decode profile + compute-plan JSON |
 
 ```bash
+# Export torch.export decode (explicit KV I/O, no MLState)
+phase1/.venv/bin/python phase1/coreml_kv_convert.py \
+  --mode decode_torch_export --output-dir models --max-ctx 1024
+
 # Benchmark with instrumentation (writes coreml_load_report.json per run)
 phase1/.venv/bin/python phase1/ane_residency_benchmark.py \
   --backend coreml --decode --context 512 --compute-units all
 
 # Placement profile (compute plan + powermetrics)
 PYTHONPATH=phase1 phase1/.venv/bin/python phase1/ane_placement_profile.py \
-  --compute-units all --context 512
+  --decode-kv models/qwen2.5-0.5b-decode-kv-torch-export.mlpackage \
+  --max-ctx 1024 --compute-units all --context 512
 ```
 
 ## Tracked measurement artifacts (committed to repo)
@@ -161,7 +218,8 @@ PYTHONPATH=phase1 phase1/.venv/bin/python phase1/ane_placement_profile.py \
 | Run ID | Type | Key metrics | Paths |
 |--------|------|-------------|-------|
 | `ane_residency_20260701T010929Z_830681e7` | MLState decode benchmark | 7.45 t/s, 0.11% ANE | `logs/ane_residency_20260701T010929Z_830681e7*`, `results/ane_residency/ane_residency_20260701T010929Z_830681e7/` |
-| `ane_placement_profile_20260701T012500Z_e43e6053` | ANE placement profile | 17.83 t/s, 0.41% ANE; 0% ANE compute plan | `results/ane_placement_profile/ane_placement_profile_20260701T012500Z_e43e6053/`, `logs/ane_placement_profile_all_ctx512.powermetrics.txt` |
+| `ane_placement_profile_20260701T012500Z_e43e6053` | ANE placement profile (MLState) | 17.83 t/s, 0.41% ANE; 0% ANE compute plan | `results/ane_placement_profile/ane_placement_profile_20260701T012500Z_e43e6053/`, `logs/ane_placement_profile_all_ctx512.powermetrics.txt` |
+| `ane_placement_profile_20260701T020740Z_bf783c54` | torch.export decode profile | 7.93 t/s, 0.067% ANE proxy; **44.8% ANE compute plan** | `results/ane_placement_profile/ane_placement_profile_20260701T020740Z_bf783c54/`, `logs/ane_placement_profile_all_ctx512.powermetrics.txt` |
 | `ane_residency_20260701T010854Z_a164b6cc` | Failed (pre-fix OOM) | GPU OOM loading both models | `logs/ane_residency_20260701T010854Z_a164b6cc_ctx512.powermetrics.txt` |
 
 Local-only (not tracked): `models/*.mlpackage/`, `models/qwen2.5-0.5b-decode-kv.pt`.
