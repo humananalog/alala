@@ -54,6 +54,7 @@ class SliceUpdateKeyValueCache:
         *,
         k_cache=None,
         v_cache=None,
+        kv_write_mode: str = "mask",
     ) -> None:
         import torch
         from transformers.cache_utils import Cache
@@ -62,6 +63,7 @@ class SliceUpdateKeyValueCache:
         if super_init:
             Cache.__init__(self)
         self.past_seen_tokens: int = 0
+        self.kv_write_mode = kv_write_mode
         if k_cache is not None and v_cache is not None:
             self.k_cache = k_cache
             self.v_cache = v_cache
@@ -81,22 +83,33 @@ class SliceUpdateKeyValueCache:
         if "position" in cache_kwargs:
             import torch
 
-            def _write_slot(layer_cache, token_states, position):
+            write_mode = cache_kwargs.get("kv_write_mode", self.kv_write_mode)
+            position = cache_kwargs["position"].to(dtype=torch.int64).reshape(-1)
+            layer_k = self.k_cache[layer_idx]
+            layer_v = self.v_cache[layer_idx]
+
+            if write_mode == "scatter":
+                # Clean path: scatter write + in-place layer update on cloned cache.
+                pos_idx = position.reshape(1, 1, 1, 1).expand_as(k_state)
+                new_layer_k = layer_k.scatter(2, pos_idx, k_state)
+                new_layer_v = layer_v.scatter(2, pos_idx, v_state)
+                self.k_cache[layer_idx] = new_layer_k
+                self.v_cache[layer_idx] = new_layer_v
+                return new_layer_k, new_layer_v
+
+            def _write_slot_mask(layer_cache, token_states, pos_tensor):
                 seq_len = layer_cache.shape[2]
                 idx = torch.arange(seq_len, device=layer_cache.device, dtype=torch.int32).reshape(
                     1, 1, -1, 1
                 )
-                pos = position.reshape(1, 1, 1, 1).to(torch.int32)
+                pos = pos_tensor.reshape(1, 1, 1, 1).to(torch.int32)
                 slot_mask = (idx == pos).to(layer_cache.dtype)
                 token_broadcast = token_states.expand(-1, -1, seq_len, -1)
                 return layer_cache * (1.0 - slot_mask) + token_broadcast * slot_mask
 
-            # torch.export path: mask-based slot write + out-of-place layer cat.
-            position = cache_kwargs["position"].to(dtype=torch.int32).reshape(-1)
-            layer_k = self.k_cache[layer_idx]
-            layer_v = self.v_cache[layer_idx]
-            new_layer_k = _write_slot(layer_k, k_state, position)
-            new_layer_v = _write_slot(layer_v, v_state, position)
+            # Legacy mask path: equal/tile/mul per slot + out-of-place layer cat.
+            new_layer_k = _write_slot_mask(layer_k, k_state, position)
+            new_layer_v = _write_slot_mask(layer_v, v_state, position)
             self.k_cache = torch.cat(
                 (self.k_cache[:layer_idx], new_layer_k.unsqueeze(0), self.k_cache[layer_idx + 1 :]),
                 dim=0,
@@ -182,7 +195,10 @@ def _patch_qwen2_attention(torch, *, use_cache_position: bool = False) -> None:
 
             if past_key_value is not None:
                 if use_index_copy:
-                    cache_kwargs = {"position": cache_position}
+                    cache_kwargs = {
+                        "position": cache_position,
+                        "kv_write_mode": getattr(past_key_value, "kv_write_mode", "mask"),
+                    }
                 else:
                     cache_kwargs = {"slice_indices": (past_kv_len, end_step)}
                 key_states, value_states = past_key_value.update(
@@ -392,6 +408,7 @@ def convert_decode_torch_export_model(
     AutoModelForCausalLM,
     output_dir: Path,
     max_ctx: int,
+    kv_write_mode: str = "mask",
 ) -> dict:
     """Export decode via torch.export with explicit KV cache I/O (ATEN dialect, no MLState)."""
     from transformers.cache_utils import Cache as HFCache
@@ -399,13 +416,15 @@ def convert_decode_torch_export_model(
     class SliceKVCache(SliceUpdateKeyValueCache, HFCache):
         pass
 
-    decode_path = output_dir / "qwen2.5-0.5b-decode-kv-torch-export.mlpackage"
+    suffix = "-scatter" if kv_write_mode == "scatter" else ""
+    decode_path = output_dir / f"qwen2.5-0.5b-decode-kv-torch-export{suffix}.mlpackage"
     _patch_qwen2_attention(torch, use_cache_position=True)
 
     class DecodeExplicitKV(torch.nn.Module):
-        def __init__(self, mid: str, max_context_size: int) -> None:
+        def __init__(self, mid: str, max_context_size: int, write_mode: str) -> None:
             super().__init__()
             self.max_context_size = max_context_size
+            self.kv_write_mode = write_mode
             self.model = AutoModelForCausalLM.from_pretrained(
                 mid, torch_dtype=torch.float16, attn_implementation="sdpa"
             )
@@ -428,11 +447,18 @@ def convert_decode_torch_export_model(
             cache_position: torch.Tensor,
             causal_mask: torch.Tensor,
         ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-            # Functional cache: wrap input tensors only (no module attribute mutation).
+            # Scatter mode clones once then in-place layer updates; mask mode uses input refs.
+            if self.kv_write_mode == "scatter":
+                k_work = key_cache.clone()
+                v_work = value_cache.clone()
+            else:
+                k_work = key_cache
+                v_work = value_cache
             kv_cache = SliceKVCache(
                 shape=self.kv_cache_shape,
-                k_cache=key_cache,
-                v_cache=value_cache,
+                k_cache=k_work,
+                v_cache=v_work,
+                kv_write_mode=self.kv_write_mode,
             )
             logits = self.model(
                 input_ids.long(),
@@ -444,7 +470,7 @@ def convert_decode_torch_export_model(
             ).logits
             return logits, kv_cache.k_cache, kv_cache.v_cache
 
-    torch_model = DecodeExplicitKV(model_id, max_context_size=max_ctx).eval()
+    torch_model = DecodeExplicitKV(model_id, max_context_size=max_ctx, write_mode=kv_write_mode).eval()
     kv_cache_shape = torch_model.kv_cache_shape
 
     example_pos = min(512, max_ctx - 1)
@@ -500,6 +526,7 @@ def convert_decode_torch_export_model(
         "torch_export_error": export_error,
         "coreml_decode_torch_export_error": coreml_error,
         "export_method": "torch_export" if coreml_ok else "torch_export_failed",
+        "kv_write_mode": kv_write_mode,
         "kv_cache_shape": list(kv_cache_shape),
         "trace_cache_position": example_pos,
     }
@@ -532,20 +559,22 @@ def convert_kv_models(
     max_ctx: int = DEFAULT_MAX_CTX,
     mode: str = "all",
     decode_export_method: str = "mlstate",
+    decode_kv_write: str = "mask",
     skip_validation: bool = False,
 ) -> dict:
     ct, torch, AutoModelForCausalLM = _import_stack()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     prefill_only = mode == "prefill"
-    decode_only = mode in ("decode", "decode_torch_export")
-    decode_torch_export_only = mode == "decode_torch_export" or decode_export_method == "torch_export"
+    decode_only = mode in ("decode", "decode_torch_export", "decode_torch_export_clean")
+    kv_write_mode = "scatter" if mode == "decode_torch_export_clean" else decode_kv_write
 
     report: dict = {
         "model_id": model_id,
         "max_ctx": max_ctx,
         "mode": mode,
         "decode_export_method": decode_export_method,
+        "decode_kv_write": kv_write_mode,
     }
 
     hf = None
@@ -558,7 +587,10 @@ def convert_kv_models(
         report["prefill_path"] = str(prefill_path)
 
     if not prefill_only:
-        if decode_export_method in ("mlstate", "both") and mode != "decode_torch_export":
+        if decode_export_method in ("mlstate", "both") and mode not in (
+            "decode_torch_export",
+            "decode_torch_export_clean",
+        ):
             convert_decode_model._skip_validation = skip_validation  # type: ignore[attr-defined]
             decode_info = convert_decode_model(
                 model_id=model_id,
@@ -570,7 +602,10 @@ def convert_kv_models(
             )
             report.update(decode_info)
 
-        if decode_export_method in ("torch_export", "both") or mode == "decode_torch_export":
+        if decode_export_method in ("torch_export", "both") or mode in (
+            "decode_torch_export",
+            "decode_torch_export_clean",
+        ):
             convert_decode_torch_export_model._skip_validation = skip_validation  # type: ignore[attr-defined]
             te_info = convert_decode_torch_export_model(
                 model_id=model_id,
@@ -579,6 +614,7 @@ def convert_kv_models(
                 AutoModelForCausalLM=AutoModelForCausalLM,
                 output_dir=output_dir,
                 max_ctx=max_ctx,
+                kv_write_mode=kv_write_mode,
             )
             report.update(te_info)
 
@@ -599,9 +635,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-ctx", type=int, default=DEFAULT_MAX_CTX)
     parser.add_argument(
         "--mode",
-        choices=("all", "prefill", "decode", "decode_torch_export"),
+        choices=("all", "prefill", "decode", "decode_torch_export", "decode_torch_export_clean"),
         default="all",
-        help="Export prefill, MLState decode, torch.export decode, or all",
+        help="Export prefill, MLState decode, torch.export decode (mask/scatter), or all",
+    )
+    parser.add_argument(
+        "--decode-kv-write",
+        choices=("mask", "scatter"),
+        default="mask",
+        help="KV slot write for torch.export decode: mask (legacy) or scatter (clean)",
     )
     parser.add_argument(
         "--decode-export-method",
@@ -621,6 +663,8 @@ def main(argv: list[str] | None = None) -> int:
         args.mode = "decode"
     if args.decode_torch_export_only:
         args.mode = "decode_torch_export"
+    if getattr(args, "decode_torch_export_clean_only", False):
+        args.mode = "decode_torch_export_clean"
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s: %(message)s")
     try:
         report = convert_kv_models(
@@ -629,6 +673,7 @@ def main(argv: list[str] | None = None) -> int:
             max_ctx=args.max_ctx,
             mode=args.mode,
             decode_export_method=args.decode_export_method,
+            decode_kv_write=args.decode_kv_write,
             skip_validation=args.skip_validation,
         )
     except Exception:
@@ -645,7 +690,7 @@ def main(argv: list[str] | None = None) -> int:
         "all",
     ):
         ok = False
-    if report.get("mode") == "decode_torch_export":
+    if report.get("mode") in ("decode_torch_export", "decode_torch_export_clean"):
         ok = report.get("coreml_decode_torch_export_ok", False)
     return 0 if ok else 1
 

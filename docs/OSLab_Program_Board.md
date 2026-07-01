@@ -80,7 +80,9 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 5. **R04** 24 GB working-set pressure
 
 ## Recent Decisions
-- 2026-07-01: **int4 decode quant succeeds** — `qwen2.5-0.5b-decode-kv-torch-export-int4.mlpackage` @ ctx 512: **27.73 t/s**, **2.90% ANE proxy** (vs fp16 7.93 t/s, 0.07%). ANE plan ~44%. Continue graph cleanup + Instruments. Run `1b69eca7`.
+- 2026-07-01: **Graph cleanup (scatter KV) + hybrid recommendation** — scatter int4 clean: **48.6 t/s** but **0.36% ANE** (mask int4: 27.7 t/s, 2.9% ANE). Scatter regresses ANE plan to 0%. **Recommend hybrid** (mask int4 for ANE energy, scatter for throughput). Run `6f90882a`.
+- 2026-07-01: **int4 decode quant succeeds** — mask int4 @ ctx 512: **27.73 t/s**, **2.90% ANE proxy**. Run `1b69eca7`.
+- 2026-07-01: **prefill-kv int4** — `qwen2.5-0.5b-prefill-kv-int4.mlpackage`; compute plan **29.1% ANE**.
 - 2026-07-01: **torch.export decode succeeds** — `qwen2.5-0.5b-decode-kv-torch-export.mlpackage` achieves **44.8% ANE** in `MLComputePlan` (vs 0% MLState). Profile `bf783c54`.
 - 2026-07-01: ANE placement diagnosis — decode MLState graph gets **0% ANE** in `MLComputePlan`; `CPU_AND_NE` fails ANE compile. Superseded for placement by torch.export path.
 - 2026-07-01: Core ML decode export unblocked via MLState (`qwen2.5-0.5b-decode-kv.mlpackage`); first benchmark 7.45 t/s, 0.11% ANE @ ctx 512.
@@ -169,7 +171,7 @@ None for Phase 0 completion.
 ## Phase 1 — ANE-First Execution
 
 **Status**: Active (2026-07-01)  
-**Tools**: `phase1/coreml_convert.py`, `phase1/coreml_kv_convert.py`, `phase1/coreml_quantize.py`, `phase1/kv_decode.py`, `phase1/coreml_instrumentation.py`, `phase1/ane_residency_benchmark.py`, `phase1/ane_placement_profile.py`  
+**Tools**: `phase1/coreml_convert.py`, `phase1/coreml_kv_convert.py`, `phase1/coreml_quantize.py`, `phase1/kv_decode.py`, `phase1/coreml_instrumentation.py`, `phase1/ane_residency_benchmark.py`, `phase1/ane_placement_profile.py`, `phase1/PROFILING.md`  
 **Interface notes**: `phase1/NOTES.md`
 
 ### Entry Criteria
@@ -246,12 +248,17 @@ Stateful decode path landed in `phase1/kv_decode.py` + `--decode` on `ane_reside
 
 Benchmark: `ane_residency_20260701T022853Z_1b69eca7` (60 s, ctx 512). Tool: `phase1/coreml_quantize.py`.
 
-**int4 impact:** ANE proxy **43×** fp16; throughput **3.5×**; GPU joules −44%; package 952 MB → 240 MB; temp 75°C vs 84°C. Compute-plan ANE unchanged (~44%). Still below TorchScript 35 t/s on fp16 path — int4 now **within 80%** of TorchScript and closing on MLX.
+**int4 mask impact:** ANE proxy **43×** fp16; throughput **3.5×**; compute-plan ANE ~44%; runtime proxy **2.9%**.
 
-**Decision:** int4 quant **meaningfully improved runtime ANE + throughput** → continue graph cleanup (mask-write ops), Instruments profiling, prefill-kv int4. Re-evaluate hybrid only if ANE proxy plateaus &lt;10% post-cleanup.
+**Graph cleanup (scatter KV):** −468 ops; throughput **48.6 t/s** (exceeds TorchScript); ANE plan **0%** decode; proxy **0.36%**.
+
+**prefill-kv int4:** 29.1% ANE plan.
+
+**Decision:** ANE proxy **&lt;8%** after scatter cleanup → **hybrid architecture** (mask int4 for ANE energy; scatter int4 + int4 prefill for throughput). See `phase1/PROFILING.md`.
 
 **Tracked artifacts (main @ 2026-07-01):**
-- `results/ane_residency/ane_residency_20260701T022853Z_1b69eca7/` — int4 decode 60 s benchmark
+- `results/ane_residency/ane_residency_20260701T024057Z_6f90882a/` — scatter int4 clean + prefill int4 benchmark
+- `results/ane_residency/ane_residency_20260701T022853Z_1b69eca7/` — mask int4 decode benchmark
 - `results/ane_placement_profile/ane_placement_profile_20260701T020740Z_bf783c54/` — fp16 torch.export profile
 - `results/ane_residency/ane_residency_20260701T010929Z_830681e7/` — MLState baseline
 
@@ -261,9 +268,9 @@ Benchmark: `ane_residency_20260701T022853Z_1b69eca7` (60 s, ctx 512). Tool: `pha
 
 | Metric | Target | Status (2026-07-01) |
 |--------|--------|---------------------|
-| ANE utilization | **> 0%** first run; **> 60%** gate | Prefill 38%; decode plan 44%; **int4 runtime proxy 2.9%** (fp16 0.07%) |
-| Sustained IPJ | Within **10%** of MLX baseline (or better) | **Improving** — int4 IPJ 1.32 @ ctx 512 (ANE 32 J of 1099 J total) |
-| Sustained throughput | Document tok/s at ctx 512 and 1024 | MLX 106.7; **int4 decode 27.73**; fp16 decode 7.93; TorchScript 35.0 |
+| ANE utilization | **> 0%** first run; **> 60%** gate | mask int4 proxy **2.9%**; scatter clean **0.36%**; plan up to 44% |
+| Sustained IPJ | Within **10%** of MLX baseline (or better) | scatter clean IPJ **2.86** @ 48.6 t/s; mask int4 IPJ 1.32 |
+| Sustained throughput | Document tok/s at ctx 512 and 1024 | MLX 106.7; **scatter int4 clean 48.6**; mask int4 27.7; TorchScript 35.0 |
 | Thermal compliance | Steady-state **≤ 85°C** | MLX aborted 92°C; Core ML completed with post-run abort 87.7°C |
 | Energy attribution | ANE / CPU / GPU joules per step | **Done** — Core ML 200 J ANE @ ctx 512 |
 

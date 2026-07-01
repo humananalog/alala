@@ -229,12 +229,72 @@ Runs: fp16 profile `bf783c54`; int4 compute plan from `1b69eca7` load + 60 s ben
 
 If ANE proxy plateaus &lt;10% after graph cleanup, evaluate **hybrid** (ANE int4 prefill + optimized decode runtime) for throughput while preserving measured ANE energy on prefill.
 
+### Graph cleanup — scatter KV write (2026-07-01)
+
+**Problem:** Mask-based KV slot write (`arange` + `equal` + `expand` + `mul` + `add`) per layer, plus 24× `torch.cat` layer rebuilds → `equal`/`tile`/`concat`/`mul` heavy graph (3697 ops).
+
+**Change:** `--mode decode_torch_export_clean` (or `--decode-kv-write scatter`):
+- Replace mask write with `tensor.scatter(dim=2, index=cachePosition, src=token_kv)`
+- Clone input cache once per forward; update layers via in-place `k_cache[layer_idx] = …` (no per-layer `cat`)
+
+**Artifacts:**
+- fp16 scatter: `models/qwen2.5-0.5b-decode-kv-torch-export-scatter.mlpackage`
+- int4 clean: `models/qwen2.5-0.5b-decode-kv-torch-export-int4-clean.mlpackage`
+
+**Op-count delta (int4 variants):**
+
+| Op / metric | mask int4 | scatter int4 clean | Δ |
+|-------------|-----------|-------------------|---|
+| Total ops | 3697 | **3229** | −468 |
+| `tile` | 96 | **0** | −96 |
+| `ios18.concat` (layer cat) | 96 | **0** | −96 |
+| `ios18.mul` (mask) | 362 | **266** | −96 |
+| `equal` | present | **removed** | — |
+
+**Runtime trade-off (unexpected):** scatter improves throughput but **regresses ANE placement**:
+
+| Variant | ANE plan % | ANE proxy | Sust. t/s | ANE J | GPU J | CPU J | Temp |
+|---------|------------|-----------|-----------|-------|-------|-------|------|
+| mask int4 decode | **44.1%** | **2.90%** | 27.73 | 31.9 | 646 | 421 | 75°C |
+| scatter int4 clean + prefill int4 | **0%** (decode) | **0.36%** | **48.60** | 3.7 | **122** | 900 | **64°C** |
+
+Runs: mask `1b69eca7`; scatter clean `6f90882a`. Prefill int4 plan ANE **29.1%** (fp16 31.0%).
+
+`scatter` compiles GPU-preferred in `MLComputePlan` despite fewer ops. Throughput exceeds TorchScript (35 t/s) but runtime ANE proxy falls below mask int4.
+
+### prefill-kv int4 (2026-07-01)
+
+```bash
+phase1/.venv/bin/python phase1/coreml_quantize.py --model-role prefill \
+  --input models/qwen2.5-0.5b-prefill-kv.mlpackage \
+  --output models/qwen2.5-0.5b-prefill-kv-int4.mlpackage
+```
+
+Compute plan: **29.1% ANE** (4049 ops). KV cache outputs remain fp16.
+
+### Instruments profiling
+
+See **`phase1/PROFILING.md`** for Core ML + Metal System Trace attach workflow, correlation with powermetrics/JSONL, and what to look for (NE tile usage, GPU fallback, KV I/O dominance).
+
+### Recommendation (post graph-cleanup, 2026-07-01)
+
+Runtime ANE proxy **remains &lt;8%** after scatter cleanup (0.36% vs 2.90% mask int4). Throughput improved to **48.6 t/s** but ANE energy regressed.
+
+**Recommend hybrid architecture:**
+1. **ANE path:** mask int4 torch.export decode (2.9% ANE proxy, 44% plan) for energy-sensitive workloads.
+2. **Throughput path:** scatter int4 + int4 prefill (48.6 t/s) when latency matters more than ANE joules.
+3. **Prefill:** int4 prefill-kv for bandwidth; consider MLX or non-CoreML decode for sustained autoregressive loops.
+4. **Next measurement:** Instruments Core ML template on both variants per `PROFILING.md` to confirm NE idle during scatter decode.
+
+Do **not** continue scatter-only optimization for ANE residency — revert KV write to mask for ANE experiments; pursue hybrid split explicitly.
+
 ## Tooling and commands
 
 | Script | Purpose |
 |--------|---------|
 | `coreml_kv_convert.py` | Export prefill-kv + MLState decode + `--mode decode_torch_export` |
-| `coreml_quantize.py` | Post-export int4/int8 linear weight quantization |
+| `coreml_quantize.py` | Post-export int4/int8 linear weight quantization (decode + prefill) |
+| `PROFILING.md` | Instruments Core ML profiling workflow |
 | `coreml_instrumentation.py` | Load models with logged `ComputeUnit` + `MLComputePlan` |
 | `ane_residency_benchmark.py` | Full benchmark; `--compute-units`, `--profile` |
 | `ane_placement_profile.py` | Short decode profile + compute-plan JSON |
@@ -261,7 +321,8 @@ PYTHONPATH=phase1 phase1/.venv/bin/python phase1/ane_placement_profile.py \
 | `ane_residency_20260701T010929Z_830681e7` | MLState decode benchmark | 7.45 t/s, 0.11% ANE | `logs/ane_residency_20260701T010929Z_830681e7*`, `results/ane_residency/ane_residency_20260701T010929Z_830681e7/` |
 | `ane_placement_profile_20260701T012500Z_e43e6053` | ANE placement profile (MLState) | 17.83 t/s, 0.41% ANE; 0% ANE compute plan | `results/ane_placement_profile/ane_placement_profile_20260701T012500Z_e43e6053/`, `logs/ane_placement_profile_all_ctx512.powermetrics.txt` |
 | `ane_placement_profile_20260701T020740Z_bf783c54` | torch.export fp16 decode profile | 7.93 t/s, 0.067% ANE proxy; **44.8% ANE compute plan** | `results/ane_placement_profile/ane_placement_profile_20260701T020740Z_bf783c54/` |
-| `ane_residency_20260701T022853Z_1b69eca7` | torch.export **int4** decode 60 s | **27.73 t/s**, **2.90% ANE**; 44.1% ANE plan | `results/ane_residency/ane_residency_20260701T022853Z_1b69eca7/`, `logs/ane_residency_20260701T022853Z_1b69eca7_ctx512.powermetrics.txt` |
+| `ane_residency_20260701T022853Z_1b69eca7` | mask int4 decode 60 s | **27.73 t/s**, **2.90% ANE**; 44.1% plan | `results/ane_residency/ane_residency_20260701T022853Z_1b69eca7/` |
+| `ane_residency_20260701T024057Z_6f90882a` | scatter int4 clean + prefill int4 | **48.60 t/s**, **0.36% ANE**; 0% decode plan | `results/ane_residency/ane_residency_20260701T024057Z_6f90882a/` |
 | `ane_residency_20260701T010854Z_a164b6cc` | Failed (pre-fix OOM) | GPU OOM loading both models | `logs/ane_residency_20260701T010854Z_a164b6cc_ctx512.powermetrics.txt` |
 
 Local-only (not tracked): `models/*.mlpackage/`, `models/qwen2.5-0.5b-decode-kv.pt`.
