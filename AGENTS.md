@@ -7,11 +7,11 @@ Instructions for AI coding agents working in this repository.
 Alalā is a physics-first, measurement-driven AI system for Apple Silicon M4 (24 GB).
 North star: maximize **Intelligence per Joule (IPJ)** with bounded self-improvement under the **Human Cooperation Attractor (HCA)**.
 
-**Current phase:** Phase 1 active (ANE-first seeding model). Phase 0 complete with measured M4 baselines.
+**Current phase:** Phase 2 active (fundamental redesign research, high-risk mode). Phase 0 complete; Phase 1 concluded with measured ANE baselines.
 
 ## Before You Code
 
-1. Read `docs/Project_Index_Alalā.md` (navigation hub for all 21 docs).
+1. Read `docs/Project_Index_Alalā.md` (navigation hub for all 22 docs).
 2. Read `docs/AI_Coder_Rules_Guidelines_Alalā.md` (non-negotiable rules).
 3. Check `docs/OSLab_Program_Board.md` for current phase, tasks, and blockers.
 4. Read the authoritative doc for your task area (physics, IPJ, memory, compiler, Phase 1 ANE, etc.).
@@ -23,7 +23,7 @@ alala/
 ├── AGENTS.md              # This file — agent operational context
 ├── .cursor/rules/         # Cursor-scoped rules (.mdc)
 ├── .cursor/agents/        # Custom subagents (verifier, etc.)
-├── docs/                  # Authoritative documentation (21 indexed docs)
+├── docs/                  # Authoritative documentation (22 indexed docs)
 ├── harness/               # Phase 0 measurement harness
 ├── phase1/                # Phase 1 Core ML + ANE residency tooling
 ├── models/                # Converted Core ML packages (gitignored)

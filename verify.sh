@@ -34,9 +34,10 @@ if [ ! -s README.md ] || [ "$(wc -c < README.md)" -lt 200 ]; then
   fail "README.md is missing or too small"
 fi
 
-# 3. All 19 Project Index documents must exist and be substantive
+# 3. All 22 Project Index documents must exist and be substantive
 required_docs=(
   "Project_Index_Alalā.md"
+  "Alalā_Vision_and_Strategy.md"
   "Alalā_Physics_Corrected_Foundation.md"
   "Alalā_Core_Invariant_Specification_HCA.md"
   "OSLab_Program_Board.md"
