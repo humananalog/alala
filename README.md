@@ -54,7 +54,7 @@ These numbers gate architectural decisions. No performance claim without attache
 - **Phase 0 harness:** `harness/m4_energy_harness.py` — `thermal_baseline`, `sram_cliff`, `kv_comparison`, `orchestration`
 - **Phase 1 ANE tooling:** `phase1/coreml_convert.py`, `phase1/ane_residency_benchmark.py`
 - **IPJ-first logging:** structured JSONL plus raw `powermetrics` per experiment
-- **21 indexed docs:** physics, HCA, memory, compiler, Phase 0/1 planning and results
+- **22 indexed docs:** vision, physics, HCA, memory, compiler, Phase 0/1/2 planning and results
 - **Agent workflow:** `AGENTS.md`, Cursor rules, explicit task lists for work on physical M4
 - **Tracked artifacts:** benchmark logs and results in-repo for audit and comparison
 
@@ -123,7 +123,7 @@ Details: [`phase1/README.md`](phase1/README.md).
 alala/
 ├── AGENTS.md              # Instructions for Cursor / cloud AI coding agents
 ├── assets/                # README and project assets
-├── docs/                  # Authoritative documentation (21 indexed docs)
+├── docs/                  # Authoritative documentation (22 indexed docs)
 ├── harness/               # Phase 0 M4 measurement harness
 ├── phase1/                # Phase 1 Core ML conversion + ANE residency benchmarks
 ├── models/                # Converted .mlpackage output (gitignored; see .gitkeep)

@@ -2,13 +2,13 @@
 
 **Status**: Authoritative entry point (as of 2026-07-01)
 **Repository**: https://github.com/humananalog/alala  
-**Current phase**: Phase 1 **STARTING** (2026-07-01) — ANE-first seeding model per `Phase1_ANE_First_Strategy.md`
+**Current phase**: Phase 2 **ACTIVE** (2026-07-01) — Fundamental redesign research per `Alalā_Vision_and_Strategy.md`
 
 **Execution Model**: Grok Build (local AI coding agent on the physical Mac Mini M4 24 GB) is the primary executor (~98%). All documentation is structured to be directly followable by an AI coder.
 
 **Execution constraint** (all benchmark/measurement docs): All workloads run locally on the target Mac Mini M4 24 GB using native tools (`powermetrics`, Metal/Core ML or MLX). Respect thermal limits — stop if temperature exceeds safe sustained threshold.
 
-This document is the single source of truth for navigating the entire Alalā documentation set (**21 indexed docs** in `docs/`).
+This document is the single source of truth for navigating the entire Alalā documentation set (**22 indexed docs** in `docs/`).
 
 ## 1. Quick Start for Grok Build
 
@@ -19,16 +19,21 @@ This document is the single source of truth for navigating the entire Alalā doc
 3. Read `Alalā_Physics_Corrected_Foundation.md` (M4 silicon realities, §0).
 4. Read `Alalā_Core_Invariant_Specification_HCA.md` (non-violable constraints).
 5. Open `OSLab_Program_Board.md` — note current phase, success criteria, blockers.
-6. Read `Phase0_Results_Summary_Alalā.md` for measured Phase 0 baselines.
-7. Use `IPJ_Measurement_Protocol_Alalā.md` §2.1 for operational IPJ; log all experiments; update Program Board.
+6. Read `Alalā_Vision_and_Strategy.md` for current research direction and risk posture.
+7. Read `Phase0_Results_Summary_Alalā.md` for measured Phase 0 baselines.
+8. Use `IPJ_Measurement_Protocol_Alalā.md` §2.1 for operational IPJ; log all experiments; update Program Board.
 
-**Phase 1 active (2026-07-01):**
+**Phase 2 active (2026-07-01):**
 
-1. Read `Phase1_ANE_First_Strategy.md` and Program Board Phase 1 section.
-2. Use `phase1/README.md` for Core ML conversion and ANE residency benchmark commands.
-3. Commit `logs/` and `results/ane_residency/` artifacts with benchmark changes.
+1. Read `Alalā_Vision_and_Strategy.md` and Program Board Phase 2 section.
+2. Use Phase 1 artifacts (`phase1/`, `Phase1_ANE_First_Strategy.md`) as measured baselines only.
+3. Commit `logs/` and `results/` artifacts with benchmark changes.
 
-## 2. Document Hierarchy (All 21 Docs)
+## 2. Document Hierarchy (All 22 Docs)
+
+### Vision & Strategy
+
+- [`docs/Alalā_Vision_and_Strategy.md`](Alalā_Vision_and_Strategy.md) — North star, strategic posture, Phase 2 research vectors, risk acceptance.
 
 ### Phase 0
 
@@ -38,12 +43,13 @@ This document is the single source of truth for navigating the entire Alalā doc
 
 - [`docs/Phase1_ANE_First_Strategy.md`](Phase1_ANE_First_Strategy.md) — ANE-first execution plan, seeding model selection, and first experiment success gate.
 
-### Core / Authoritative (5)
+### Core / Authoritative (6)
 | Document | Purpose | Status |
 |----------|---------|--------|
+| `Alalā_Vision_and_Strategy.md` | North star, Phase 2 research direction, risk posture | Complete v2 (2026-07-01) |
 | `Alalā_Physics_Corrected_Foundation.md` | M4 silicon realities (§0), ANE-first, thermal headroom, sustained IPJ > peak | Complete v2 |
 | `Alalā_Core_Invariant_Specification_HCA.md` | Human Cooperation Attractor — constitutional constraint | Complete |
-| `OSLab_Program_Board.md` | Live phase status, success criteria, audit log, blockers | Complete v1.2 (Phase 1 results) |
+| `OSLab_Program_Board.md` | Live phase status, success criteria, audit log, blockers | Complete v1.3 (Phase 2 active) |
 | `OSLab_Execution_Playbook.md` | Day-to-day program execution on physical M4 | Complete |
 | `IPJ_Measurement_Protocol_Alalā.md` | Operational IPJ\(_{phase0}\), powermetrics + thermal artifacts required | Complete v1.2 |
 
@@ -75,7 +81,7 @@ This document is the single source of truth for navigating the entire Alalā doc
 | `Meta_Controller_Skeleton_Alalā.md` | HCA + IPJ-gated meta-controller | Complete |
 | `Project_Index_Alalā.md` | This navigation hub | Complete |
 
-**Total**: 21 documents (5 + 8 + 3 + 5 = 21).
+**Total**: 22 documents (6 + 8 + 3 + 5 = 22).
 
 ## 3. Key Concepts & Single Sources of Truth
 
@@ -92,11 +98,13 @@ This document is the single source of truth for navigating the entire Alalā doc
 
 ## 4. How to Navigate
 
+- **Vision / strategy** → `Alalā_Vision_and_Strategy.md`
 - **Planning / architecture** → `Alalā_Physics_Corrected_Foundation.md`
 - **Self-improvement** → HCA spec + `Alalā_Improvement_Playbook.md`
 - **Daily work** → `OSLab_Execution_Playbook.md` + Program Board
 - **Phase 0 results** → `Phase0_Results_Summary_Alalā.md`
-- **Phase 1 ANE strategy** → `Phase1_ANE_First_Strategy.md`
+- **Phase 1 ANE baselines** → `Phase1_ANE_First_Strategy.md` + `phase1/README.md`
+- **Phase 2 research** → `Alalā_Vision_and_Strategy.md` + Program Board Phase 2 section
 - **Run Phase 0 benchmarks** → `How_to_Run_First_Micro_Benchmark_on_M4_Alalā.md`
 - **Run Phase 1 ANE benchmarks** → `phase1/README.md`
 - **Measurement / IPJ** → `IPJ_Measurement_Protocol_Alalā.md`

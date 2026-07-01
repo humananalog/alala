@@ -1,12 +1,18 @@
 # OSLab Program Board — Alalā
 
-**Version**: 1.2
+**Version**: 1.3
 **Purpose**: Single source of truth for current status, risks, decisions, and progress.
 
 ## Current Phase
 
-**Phase 1 – ANE-First Execution & Seeding Model** — **STARTING** (2026-07-01)  
+**Phase 2 – Fundamental Redesign Research (High-Risk)** — **ACTIVE** (2026-07-01)  
+**Strategy**: `Alalā_Vision_and_Strategy.md`  
+**Risk posture**: High risk, high potential reward; solo research mode; prioritize breakthrough exploration over incremental stack optimization.
+
+**Phase 1 – ANE-First Execution & Seeding Model** — **CONCLUDED** (2026-07-01)  
 **Strategy**: `Phase1_ANE_First_Strategy.md`  
+**Outcome**: Core ML path achieves measurable ANE placement (up to 44.8% compute plan) but runtime ANE proxy remains &lt;3% during decode; scatter-KV cleanup trades ANE for throughput. Incremental optimization of existing transformer + Core ML stacks shows diminishing returns. See Phase 1 section below for measured artifacts.
+
 **Phase 0** — **COMPLETE** (2026-06-30); synthesis: `Phase0_Results_Summary_Alalā.md`
 
 **Prior label**: ANE Characterization & Measurement Infrastructure  
@@ -80,6 +86,7 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 5. **R04** 24 GB working-set pressure
 
 ## Recent Decisions
+- 2026-07-01: **Strategic shift to Phase 2 (high-risk research mode)** — pivot from incremental ANE optimization of existing transformers to fundamental redesign of KV/state, inference execution, and model architecture co-designed with Apple Silicon physics. Documented in `Alalā_Vision_and_Strategy.md`. Phase 1 artifacts retained as baselines.
 - 2026-07-01: **Graph cleanup (scatter KV) + hybrid recommendation** — scatter int4 clean: **48.6 t/s** but **0.36% ANE** (mask int4: 27.7 t/s, 2.9% ANE). Scatter regresses ANE plan to 0%. **Recommend hybrid** (mask int4 for ANE energy, scatter for throughput). Run `6f90882a`.
 - 2026-07-01: **int4 decode quant succeeds** — mask int4 @ ctx 512: **27.73 t/s**, **2.90% ANE proxy**. Run `1b69eca7`.
 - 2026-07-01: **prefill-kv int4** — `qwen2.5-0.5b-prefill-kv-int4.mlpackage`; compute plan **29.1% ANE**.
@@ -170,7 +177,7 @@ None for Phase 0 completion.
 
 ## Phase 1 — ANE-First Execution
 
-**Status**: Active (2026-07-01)  
+**Status**: Concluded (2026-07-01); results retained as baselines for Phase 2  
 **Tools**: `phase1/coreml_convert.py`, `phase1/coreml_kv_convert.py`, `phase1/coreml_quantize.py`, `phase1/kv_decode.py`, `phase1/coreml_instrumentation.py`, `phase1/ane_residency_benchmark.py`, `phase1/ane_placement_profile.py`, `phase1/PROFILING.md`  
 **Interface notes**: `phase1/NOTES.md`
 
@@ -292,9 +299,42 @@ Ranked by expected trade-off among model size, instruction capability, and ANE m
 
 **Decision (2026-07-01)**: Begin Core ML / ANE-friendly conversion with **Qwen2.5-0.5B-Instruct**. Measure ANE utilization %, sustained tok/s at ctx 512 and 1024, energy per token, IPJ, and thermal behavior vs MLX GPU baseline (Phase 0: ~9.65 / ~6.40 t/s sustained, ~0% ANE).
 
+## Phase 2 — Fundamental Redesign Research
+
+**Status**: Active (2026-07-01)  
+**Vision**: `Alalā_Vision_and_Strategy.md`
+
+### Research Vectors (initial)
+
+| Vector | Example directions | Physics grounding |
+|--------|-------------------|-------------------|
+| KV / state architecture | Static shapes, ring buffers, paged/sliding window, reduced per-step mask I/O | `Hierarchical_Memory_Architecture_Alalā.md`, Phase 1 decode ANE proxy gap |
+| Inference execution | Hybrid ANE+GPU/MLX from design start, thermal-aware scheduling | Phase 0 thermal baseline, Phase 1 hybrid recommendation |
+| Model architecture | Operator/shape regularity, state handling co-designed with ANE | `Compiler_Passes_Skeleton_Alalā.md`, `Memory_Access_Pattern_Guidelines_Alalā.md` |
+| Self-improvement substrate | Efficiency layer for agentic loops under IPJ + HCA gates | `Alalā_Improvement_Playbook.md`, HCA spec |
+
+### Phase 2 Success Criteria (longer-term)
+
+| Criterion | Target | Status |
+|-----------|--------|--------|
+| Sustained useful work per joule | Demonstrable improvement vs Phase 0/1 baselines | Not started |
+| New efficiency/capability regime | Evidence of gains difficult with conventional decode on M4 | Not started |
+| Hardware-model co-design map | Documented ANE/NPU design space for Apple Silicon | In progress (vision doc) |
+
+### Phase 2 Active Tasks
+
+- P2-00: Publish vision and strategy document — **Complete** (2026-07-01)
+- P2-01: Survey KV/state redesign options against ANE static-shape constraints — **Pending**
+- P2-02: Prototype one static-shape or ring-buffer decode path — **Pending**
+- P2-03: Document hybrid execution design (ANE energy + GPU/MLX throughput) — **Pending**
+
+### Blockers
+
+None for documentation pivot. Experimental work requires physical M4 access.
+
 ## Next Milestone
 
-Execute first ANE residency experiment on physical M4 (Qwen2.5-0.5B Core ML conversion + benchmark). Gate compiler pass prototyping on success metrics above per `Revised_Phase0_2_Systems_Plan_Alalā.md`.
+Select and prototype the first Phase 2 research vector (recommended: KV/state architecture redesign with static shapes). Use Phase 1 measured baselines (scatter int4 48.6 t/s / 0.36% ANE; mask int4 27.7 t/s / 2.9% ANE; MLX 106.7 t/s / ~0% ANE) as comparison anchors per `IPJ_Measurement_Protocol_Alalā.md`.
 
 ## Human Review Flags
 _See table above (post-audit)._

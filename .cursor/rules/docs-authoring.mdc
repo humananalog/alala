@@ -16,4 +16,4 @@ When editing files under `docs/`:
 - Do not create meta/staging files (`filename.md`, `OtherKeyFiles.md`).
 - HCA and IPJ references must align with @docs/Alalā_Core_Invariant_Specification_HCA.md and @docs/IPJ_Measurement_Protocol_Alalā.md.
 
-Verification: `./verify.sh` checks all 19 indexed docs exist and are >200 bytes.
+Verification: `./verify.sh` checks all 22 indexed docs exist and are >200 bytes.
