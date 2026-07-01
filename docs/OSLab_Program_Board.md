@@ -80,6 +80,7 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 5. **R04** 24 GB working-set pressure
 
 ## Recent Decisions
+- 2026-07-01: **Mask int4 plan/runtime gap analysis** — CLI profiling (`compute_plan_analysis.py`, `powermetrics_timeseries.py`): **95.6% of placed ops** prefer ANE; gap is structural (KV I/O ~12.6 MB/step, CPU orchestration 38% energy, GPU 59%). Steady ANE proxy **2.7–5.6%** per 5 s windows. **Confirm hybrid**; optional ctx-512 re-export + Instruments on Xcode M4. Runs `1b69eca7`, `5fe0d68c`. Artifacts: `results/compute_plan_analysis/`.
 - 2026-07-01: **Graph cleanup (scatter KV) + hybrid recommendation** — scatter int4 clean: **48.6 t/s** but **0.36% ANE** (mask int4: 27.7 t/s, 2.9% ANE). Scatter regresses ANE plan to 0%. **Recommend hybrid** (mask int4 for ANE energy, scatter for throughput). Run `6f90882a`.
 - 2026-07-01: **int4 decode quant succeeds** — mask int4 @ ctx 512: **27.73 t/s**, **2.90% ANE proxy**. Run `1b69eca7`.
 - 2026-07-01: **prefill-kv int4** — `qwen2.5-0.5b-prefill-kv-int4.mlpackage`; compute plan **29.1% ANE**.
@@ -254,15 +255,23 @@ Benchmark: `ane_residency_20260701T022853Z_1b69eca7` (60 s, ctx 512). Tool: `pha
 
 **prefill-kv int4:** 29.1% ANE plan.
 
-**Decision:** ANE proxy **&lt;8%** after scatter cleanup → **hybrid architecture** (mask int4 for ANE energy; scatter int4 + int4 prefill for throughput). See `phase1/PROFILING.md`.
+**Decision:** Plan/runtime gap is **structural** (explicit KV I/O + host orchestration dominate; not fixable by mask-op tweaks alone). ANE proxy **&lt;8%** after scatter cleanup → **hybrid architecture** (mask int4 for ANE/IPJ; scatter int4 + int4 prefill for throughput). See `phase1/NOTES.md` § Plan vs runtime gap analysis and `phase1/PROFILING.md`.
+
+**Gap analysis highlights (mask int4):**
+- 44.1% plan ANE = 1630/3697 ops; **95.6%** of 1705 *placed* ops prefer ANE
+- GPU-only mask control: 12 ops (`equal`/`gather`/`select`/`greater_equal`)
+- Energy split run `1b69eca7`: ANE 32 J (2.9%), GPU 646 J, CPU 421 J
+- Powermetrics steady windows: ANE proxy p50 **2.66%**, max burst **17%** at prefill hand-off
 
 **Tracked artifacts (main @ 2026-07-01):**
+- `results/compute_plan_analysis/` — per-op plan + powermetrics time-series (`mask_int4_decode.json`, `mask_int4_powermetrics_ts.json`, `mask_int4_correlation_5fe0d68c_ts.json`)
+- `results/ane_residency/ane_residency_20260701T025617Z_5fe0d68c/` — mask int4 30 s correlation benchmark
 - `results/ane_residency/ane_residency_20260701T024057Z_6f90882a/` — scatter int4 clean + prefill int4 benchmark
 - `results/ane_residency/ane_residency_20260701T022853Z_1b69eca7/` — mask int4 decode benchmark
 - `results/ane_placement_profile/ane_placement_profile_20260701T020740Z_bf783c54/` — fp16 torch.export profile
 - `results/ane_residency/ane_residency_20260701T010929Z_830681e7/` — MLState baseline
 
-**Gaps:** (1) Raise ANE proxy toward compute-plan 44%; (2) Match/exceed TorchScript 35 t/s (int4 at 27.7); (3) ctx 1024 + triple-model profile OOM; (4) Quantize prefill-kv.
+**Gaps:** (1) ANE proxy unlikely to approach 44% without in-package KV state — hybrid split accepted; (2) Mask int4 27.7 t/s vs scatter 48.6 t/s vs MLX 106.7; (3) ctx 1024 + triple-model profile OOM; (4) Instruments Core ML trace on Xcode M4 (manual).
 
 ### Success Metrics (First Experiment)
 

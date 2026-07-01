@@ -1,0 +1,281 @@
+{
+  "path": "models/qwen2.5-0.5b-decode-kv-torch-export-int4.mlpackage",
+  "compute_units": "all",
+  "total_operations": 3697,
+  "placed_operations": 1705,
+  "unplaced_operations": 1992,
+  "unplaced_by_op": [
+    [
+      "const",
+      1821
+    ],
+    [
+      "ios18.constexpr_blockwise_shift_scale",
+      171
+    ]
+  ],
+  "preferred_device_class": {
+    "GPU": 75,
+    "ANE": 1630
+  },
+  "ane_preferred_fraction_all_ops": 0.4409,
+  "ane_preferred_fraction_placed_only": 0.956,
+  "gpu_preferred_fraction_all_ops": 0.0203,
+  "gpu_only_ops": [
+    [
+      "ios18.greater_equal",
+      4
+    ],
+    [
+      "ios18.add",
+      4
+    ],
+    [
+      "select",
+      4
+    ],
+    [
+      "ios18.gather",
+      3
+    ],
+    [
+      "ios18.reshape",
+      2
+    ],
+    [
+      "ios18.equal",
+      1
+    ],
+    [
+      "ios18.linear",
+      1
+    ]
+  ],
+  "gpu_despite_ane_support": [
+    [
+      "ios18.mul",
+      13
+    ],
+    [
+      "ios18.add",
+      7
+    ],
+    [
+      "ios18.linear",
+      7
+    ],
+    [
+      "ios18.slice_by_index",
+      6
+    ],
+    [
+      "ios18.reshape",
+      4
+    ],
+    [
+      "ios18.pow",
+      3
+    ],
+    [
+      "ios16.reduce_mean",
+      3
+    ],
+    [
+      "ios18.rsqrt",
+      3
+    ],
+    [
+      "ios18.transpose",
+      3
+    ],
+    [
+      "ios18.expand_dims",
+      2
+    ],
+    [
+      "ios18.concat",
+      2
+    ],
+    [
+      "tile",
+      1
+    ],
+    [
+      "ios18.cast",
+      1
+    ],
+    [
+      "ios18.silu",
+      1
+    ]
+  ],
+  "categories": {
+    "mask_kv": {
+      "total_ops": 108,
+      "preferred": {
+        "GPU": 13,
+        "ANE": 95
+      },
+      "ane_fraction_of_placed": 0.8796
+    },
+    "cache_rebuild": {
+      "total_ops": 96,
+      "preferred": {
+        "GPU": 2,
+        "ANE": 94
+      },
+      "ane_fraction_of_placed": 0.9792
+    },
+    "int4_dequant": {
+      "total_ops": 171,
+      "preferred": {},
+      "ane_fraction_of_placed": 0.0
+    },
+    "attention": {
+      "total_ops": 24,
+      "preferred": {
+        "ANE": 24
+      },
+      "ane_fraction_of_placed": 1.0
+    },
+    "linear": {
+      "total_ops": 169,
+      "preferred": {
+        "GPU": 8,
+        "ANE": 161
+      },
+      "ane_fraction_of_placed": 0.9527
+    }
+  },
+  "top_ops_by_count": [
+    {
+      "op": "const",
+      "count": 1821,
+      "preferred": {},
+      "ane_eligible_unplaced": 1821
+    },
+    {
+      "op": "ios18.mul",
+      "count": 362,
+      "preferred": {
+        "GPU": 13,
+        "ANE": 349
+      },
+      "ane_eligible_unplaced": 0
+    },
+    {
+      "op": "ios18.slice_by_index",
+      "count": 236,
+      "preferred": {
+        "GPU": 6,
+        "ANE": 230
+      },
+      "ane_eligible_unplaced": 0
+    },
+    {
+      "op": "ios18.add",
+      "count": 197,
+      "preferred": {
+        "GPU": 11,
+        "ANE": 186
+      },
+      "ane_eligible_unplaced": 0
+    },
+    {
+      "op": "ios18.constexpr_blockwise_shift_scale",
+      "count": 171,
+      "preferred": {},
+      "ane_eligible_unplaced": 171
+    },
+    {
+      "op": "ios18.linear",
+      "count": 169,
+      "preferred": {
+        "GPU": 8,
+        "ANE": 161
+      },
+      "ane_eligible_unplaced": 0
+    },
+    {
+      "op": "ios18.reshape",
+      "count": 146,
+      "preferred": {
+        "GPU": 6,
+        "ANE": 140
+      },
+      "ane_eligible_unplaced": 0
+    },
+    {
+      "op": "ios18.expand_dims",
+      "count": 98,
+      "preferred": {
+        "GPU": 2,
+        "ANE": 96
+      },
+      "ane_eligible_unplaced": 0
+    },
+    {
+      "op": "ios18.transpose",
+      "count": 96,
+      "preferred": {
+        "GPU": 3,
+        "ANE": 93
+      },
+      "ane_eligible_unplaced": 0
+    },
+    {
+      "op": "ios18.concat",
+      "count": 96,
+      "preferred": {
+        "GPU": 2,
+        "ANE": 94
+      },
+      "ane_eligible_unplaced": 0
+    },
+    {
+      "op": "tile",
+      "count": 96,
+      "preferred": {
+        "GPU": 1,
+        "ANE": 95
+      },
+      "ane_eligible_unplaced": 0
+    },
+    {
+      "op": "ios18.pow",
+      "count": 49,
+      "preferred": {
+        "GPU": 3,
+        "ANE": 46
+      },
+      "ane_eligible_unplaced": 0
+    },
+    {
+      "op": "ios16.reduce_mean",
+      "count": 49,
+      "preferred": {
+        "GPU": 3,
+        "ANE": 46
+      },
+      "ane_eligible_unplaced": 0
+    },
+    {
+      "op": "ios18.rsqrt",
+      "count": 49,
+      "preferred": {
+        "GPU": 3,
+        "ANE": 46
+      },
+      "ane_eligible_unplaced": 0
+    },
+    {
+      "op": "ios18.scaled_dot_product_attention",
+      "count": 24,
+      "preferred": {
+        "ANE": 24
+      },
+      "ane_eligible_unplaced": 0
+    }
+  ],
+  "kv_io_note": "keyCache/valueCache/keyCacheOut/valueCacheOut are explicit I/O tensors; copy cost is outside MLComputePlan op counts."
+}

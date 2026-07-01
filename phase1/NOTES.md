@@ -272,21 +272,90 @@ phase1/.venv/bin/python phase1/coreml_quantize.py --model-role prefill \
 
 Compute plan: **29.1% ANE** (4049 ops). KV cache outputs remain fp16.
 
+### Plan vs runtime gap analysis — mask int4 (2026-07-01)
+
+**Question:** Why does mask int4 show **44.1% ANE in `MLComputePlan`** but only **~2.9% runtime ANE proxy**?
+
+**Tools:** `phase1/compute_plan_analysis.py`, `phase1/powermetrics_timeseries.py`, powermetrics + JSONL from runs `1b69eca7` (60 s) and `5fe0d68c` (30 s correlation). Instruments GUI unavailable on this host (no full Xcode); see `PROFILING.md` for manual protocol.
+
+#### 1. Compute-plan denominator vs executable ops
+
+Of 3697 total ops, **1992 are unplaced** in `MLComputePlan`:
+
+| Unplaced op | Count | Role |
+|-------------|-------|------|
+| `const` | 1821 | Weights/scales; no runtime device |
+| `constexpr_blockwise_shift_scale` | 171 | int4 dequant metadata |
+
+Among **1705 placed** ops, **1630 (95.6%)** prefer ANE. The headline **44.1%** is `1630/3697` — it understates how ANE-heavy the *executable* graph is.
+
+#### 2. Which ANE-eligible ops are GPU at compile time?
+
+Only **75 placed ops (4.4%)** are GPU-preferred:
+
+- **GPU-only (12 ops):** `greater_equal`, `select`, `gather`, `equal` — mask-index control for KV slot write. Too small to explain the gap alone.
+- **GPU despite ANE support (63 ops):** scattered `mul`/`add`/`linear`/`slice_by_index`/`concat`/`tile` — scheduler *may* still run these on GPU at runtime even when plan says ANE.
+
+Bulk compute (**24 SDPA @ 100% ANE**, **161/169 linear @ ANE**) is plan-compliant. Mask KV ops (**95/108 @ ANE**) are mostly ANE-planned, not GPU-fallback victims.
+
+#### 3. What dominates wall time and energy (outside the plan)?
+
+| Cost center | Evidence | Estimate / impact |
+|-------------|----------|-------------------|
+| **KV tensor I/O** | torch.export explicit `keyCache`/`valueCache` in+out each step | ~2 × 24×2×1024×64 × 2 B ≈ **12.6 MB/step**; at 28 t/s ≈ **350 MB/s** memcpy not in op counts |
+| **Python orchestration** | `np.ascontiguousarray`, `predict()` marshalling, greedy argmax | **421 J CPU** (38%) in `1b69eca7` |
+| **GPU execution + copies** | Powermetrics steady windows 12–18 | **646 J GPU** (59%); GPU joules spike ~100 J/5 s during warmup windows 9–11 |
+| **ANE matmul/SDPA** | 31.9 J ANE (2.9%) | Real NE activity, but small vs I/O + GPU |
+
+#### 4. Powermetrics correlation
+
+5 s windows (`mask_int4_powermetrics_ts.json`, run `1b69eca7`):
+
+- **Prefill/load (w0–2):** ANE ≈ 0%, CPU-dominated.
+- **Hand-off bursts (w3, w7):** ANE **4–17%** — prefill/decode transitions.
+- **Steady decode (w12–18):** ANE **2.7–5.6%** (p50 **2.66%**); GPU 40–60 J/window.
+- **Higher ANE proxy ↔ lower GPU joules** in the same window (w7 vs w9–11).
+
+Correlation re-run `5fe0d68c`: **2.03% ANE**, **28.13 t/s** — consistent.
+
+#### 5. Root-cause ranking
+
+1. **Structural: explicit out-of-place KV I/O** per decode step (functional torch.export requirement).
+2. **Structural: host orchestration** (CPU energy, `predict()` boundaries).
+3. **Scheduler/heuristic: GPU memcpy and warmup** — explains GPU-heavy windows despite ANE plan.
+4. **Minor: mask-control GPU-only ops** — 12 ops; fixing mask alone won't close a 40-point plan/runtime gap.
+5. **Not primary: dynamic shapes** — fixed `(1,1,1,1024)` mask and static export shapes.
+
+Scatter clean confirms scheduler behavior: **`scatter` → 0% ANE plan → 0.36% runtime** with **48.6 t/s**. Replacing mask ops does not increase ANE; it removes ANE eligibility entirely.
+
+#### 6. Quick wins (limited upside)
+
+| Action | Expected effect | Effort |
+|--------|-----------------|--------|
+| ctx-specific decode package (512 not 1024) | −75% KV I/O bytes | Medium (re-export) |
+| int4 prefill-kv in benchmark path | Faster hand-off, less fp16 prefill bandwidth | Done (`prefill-kv-int4`) |
+| Remove per-layer `concat` without `scatter` | Unclear — scatter regressed ANE | High risk |
+| `CPU_AND_NE` forced compile on mask int4 | Unknown; MLState failed | Low cost test |
+| Instruments on M4 + Xcode | Confirm NE duty cycle + buffer copies | Manual |
+
+None of these alone is likely to reach **60% ANE proxy** while keeping torch.export functional KV I/O.
+
 ### Instruments profiling
 
-See **`phase1/PROFILING.md`** for Core ML + Metal System Trace attach workflow, correlation with powermetrics/JSONL, and what to look for (NE tile usage, GPU fallback, KV I/O dominance).
+See **`phase1/PROFILING.md`** for Core ML + Metal System Trace attach workflow, CLI substitutes (`compute_plan_analysis.py`, `powermetrics_timeseries.py`), powermetrics correlation tables, and manual Instruments checklist.
 
-### Recommendation (post graph-cleanup, 2026-07-01)
+### Recommendation (post gap analysis, 2026-07-01)
 
-Runtime ANE proxy **remains &lt;8%** after scatter cleanup (0.36% vs 2.90% mask int4). Throughput improved to **48.6 t/s** but ANE energy regressed.
+Gap analysis confirms the mask int4 plan/runtime delta is **structural** (KV I/O + orchestration dominate; 95.6% of *placed* ops already prefer ANE). Scatter cleanup trades the remaining ANE for throughput (0.36% vs 2.90%).
 
 **Recommend hybrid architecture:**
-1. **ANE path:** mask int4 torch.export decode (2.9% ANE proxy, 44% plan) for energy-sensitive workloads.
-2. **Throughput path:** scatter int4 + int4 prefill (48.6 t/s) when latency matters more than ANE joules.
-3. **Prefill:** int4 prefill-kv for bandwidth; consider MLX or non-CoreML decode for sustained autoregressive loops.
-4. **Next measurement:** Instruments Core ML template on both variants per `PROFILING.md` to confirm NE idle during scatter decode.
 
-Do **not** continue scatter-only optimization for ANE residency — revert KV write to mask for ANE experiments; pursue hybrid split explicitly.
+1. **ANE / IPJ path:** mask int4 torch.export decode — best measured ANE proxy (**2.9%**), 44% plan, 27.7 t/s.
+2. **Throughput path:** scatter int4 clean + int4 prefill — **48.6 t/s**, 0.36% ANE.
+3. **Optional next experiments (mask path only):** ctx-512 decode export to shrink KV I/O; `CPU_AND_NE` load test; Instruments on Xcode M4 per `PROFILING.md`.
+4. **Do not pursue** scatter-only ANE optimization — `scatter` is GPU-plan by design.
+
+Do **not** expect single-path optimization to hit **60% ANE proxy** without in-package KV state (MLState regresses ANE) or a non-CoreML decode runtime.
 
 ## Tooling and commands
 
@@ -294,7 +363,9 @@ Do **not** continue scatter-only optimization for ANE residency — revert KV wr
 |--------|---------|
 | `coreml_kv_convert.py` | Export prefill-kv + MLState decode + `--mode decode_torch_export` |
 | `coreml_quantize.py` | Post-export int4/int8 linear weight quantization (decode + prefill) |
-| `PROFILING.md` | Instruments Core ML profiling workflow |
+| `PROFILING.md` | Instruments + CLI profiling workflow |
+| `compute_plan_analysis.py` | Per-op MLComputePlan breakdown (placed vs unplaced) |
+| `powermetrics_timeseries.py` | 5 s ANE-proxy windows from powermetrics logs |
 | `coreml_instrumentation.py` | Load models with logged `ComputeUnit` + `MLComputePlan` |
 | `ane_residency_benchmark.py` | Full benchmark; `--compute-units`, `--profile` |
 | `ane_placement_profile.py` | Short decode profile + compute-plan JSON |
@@ -323,6 +394,8 @@ PYTHONPATH=phase1 phase1/.venv/bin/python phase1/ane_placement_profile.py \
 | `ane_placement_profile_20260701T020740Z_bf783c54` | torch.export fp16 decode profile | 7.93 t/s, 0.067% ANE proxy; **44.8% ANE compute plan** | `results/ane_placement_profile/ane_placement_profile_20260701T020740Z_bf783c54/` |
 | `ane_residency_20260701T022853Z_1b69eca7` | mask int4 decode 60 s | **27.73 t/s**, **2.90% ANE**; 44.1% plan | `results/ane_residency/ane_residency_20260701T022853Z_1b69eca7/` |
 | `ane_residency_20260701T024057Z_6f90882a` | scatter int4 clean + prefill int4 | **48.60 t/s**, **0.36% ANE**; 0% decode plan | `results/ane_residency/ane_residency_20260701T024057Z_6f90882a/` |
+| `ane_residency_20260701T025617Z_5fe0d68c` | mask int4 correlation 30 s | **28.13 t/s**, **2.03% ANE** | `results/ane_residency/ane_residency_20260701T025617Z_5fe0d68c/`, `results/compute_plan_analysis/mask_int4_correlation_5fe0d68c_ts.json` |
+| (analysis) | mask int4 compute plan CLI | 95.6% ANE of placed ops | `results/compute_plan_analysis/mask_int4_decode.json`, `mask_int4_powermetrics_ts.json` |
 | `ane_residency_20260701T010854Z_a164b6cc` | Failed (pre-fix OOM) | GPU OOM loading both models | `logs/ane_residency_20260701T010854Z_a164b6cc_ctx512.powermetrics.txt` |
 
 Local-only (not tracked): `models/*.mlpackage/`, `models/qwen2.5-0.5b-decode-kv.pt`.
