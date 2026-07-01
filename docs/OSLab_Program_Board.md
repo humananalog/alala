@@ -80,6 +80,8 @@ All criteria require raw `powermetrics` logs + thermal data per `IPJ_Measurement
 5. **R04** 24 GB working-set pressure
 
 ## Recent Decisions
+- 2026-07-01: ANE placement diagnosis — decode MLState graph gets **0% ANE** in `MLComputePlan`; `CPU_AND_NE` fails ANE compile. Next: `torch.export` re-export. Artifacts + tooling committed to `main`.
+- 2026-07-01: Core ML decode export unblocked via MLState (`qwen2.5-0.5b-decode-kv.mlpackage`); first benchmark 7.45 t/s, 0.11% ANE @ ctx 512.
 - 2026-07-01: Phase 1 seeding model — **Qwen2.5-0.5B-Instruct** selected for first ANE conversion attempt (see Seeding Model Decision).
 - 2026-07-01: SRAM cliff detector updated for MLX GPU path (throughput + memory/power signals; ANE % optional).
 - 2026-07-01: Phase 0 canonical results summary published (`Phase0_Results_Summary_Alalā.md`).
@@ -165,7 +167,8 @@ None for Phase 0 completion.
 ## Phase 1 — ANE-First Execution
 
 **Status**: Active (2026-07-01)  
-**Tools**: `phase1/coreml_convert.py`, `phase1/ane_residency_benchmark.py`
+**Tools**: `phase1/coreml_convert.py`, `phase1/coreml_kv_convert.py`, `phase1/kv_decode.py`, `phase1/coreml_instrumentation.py`, `phase1/ane_residency_benchmark.py`, `phase1/ane_placement_profile.py`  
+**Interface notes**: `phase1/NOTES.md`
 
 ### Entry Criteria
 
@@ -174,7 +177,7 @@ None for Phase 0 completion.
 | Phase 0 complete with measured baselines | **Done** |
 | SRAM cliff detector fix | **Done** (2026-07-01) |
 | Core ML conversion helper + ANE residency benchmark scaffold | **Done** (2026-07-01) |
-| Measurable ANE utilization **> 60%** on seeding model | Pending first hardware run |
+| Measurable ANE utilization **> 60%** on seeding model | **38%** prefill proxy @ ctx 512; **0%** decode MLState (ANE compile fails) |
 | Safe operating region: context ≤ 1024 (or paged KV) + thermal duty cycle | Pending validation |
 | First bounded self-improvement micro-scaffold with IPJ gating | After ANE residency gate |
 
@@ -183,10 +186,11 @@ None for Phase 0 completion.
 **Model**: `Qwen/Qwen2.5-0.5B-Instruct` (primary seeding candidate)
 
 **Pipeline**:
-1. Convert to Core ML — `python phase1/coreml_convert.py --model Qwen/Qwen2.5-0.5B-Instruct --output models/qwen2.5-0.5b-ane.mlpackage`
-2. Run ANE residency benchmark at ctx **512** and **1024** — `python phase1/ane_residency_benchmark.py --backend coreml --coreml-path models/qwen2.5-0.5b-ane.mlpackage`
-3. Run MLX comparison baseline — `python phase1/ane_residency_benchmark.py --backend mlx --mlx-model mlx-community/Qwen2.5-0.5B-Instruct-4bit`
-4. Log powermetrics + JSONL to `logs/` and `results/ane_residency/` per Phase 0 protocol
+1. Export KV models — `phase1/.venv/bin/python phase1/coreml_kv_convert.py --output-dir models --max-ctx 1024`
+2. Run stateful decode benchmark — `phase1/.venv/bin/python phase1/ane_residency_benchmark.py --backend coreml --decode --context 512,1024`
+3. Run MLX comparison — `python3 phase1/ane_residency_benchmark.py --backend mlx --decode --context 512,1024`
+4. ANE placement profile (optional) — `PYTHONPATH=phase1 phase1/.venv/bin/python phase1/ane_placement_profile.py`
+5. Log powermetrics + JSONL to `logs/` and `results/` (tracked in git)
 
 **Controls**: batch=1, thermal threshold **85°C** steady-state (Phase 0 envelope), 60 s step / 30 s steady window.
 
@@ -240,7 +244,12 @@ Measured decode ANE proxy: **0.11%** (`830681e7`), **0.41%** (profile `e43e6053`
 
 **Suspected causes (ranked):** (1) MLState `read_state`/`slice_update` graph rejected by ANE compiler; (2) TorchScript vs torch.export dialect; (3) dynamic `causalMask` shape; (4) stateful cache RMW footprint.
 
-**Next:** Re-export decode via `torch.export` (ATEN); try fixed-shape mask / explicit cache I/O; int4 quant; Instruments Core ML template confirmation. Profile artifacts: `results/ane_placement_profile/ane_placement_profile_20260701T012500Z_e43e6053/`.
+**Next:** Re-export decode via `torch.export` (ATEN); try fixed-shape mask / explicit cache I/O; int4 quant; Instruments Core ML template confirmation.
+
+**Tracked artifacts (main @ 2026-07-01):**
+- `results/ane_residency/ane_residency_20260701T010929Z_830681e7/` — first MLState decode benchmark
+- `results/ane_placement_profile/ane_placement_profile_20260701T012500Z_e43e6053/` — compute plan + profile report
+- `logs/ane_residency_20260701T010854Z_a164b6cc_ctx512.powermetrics.txt` — pre-fix GPU OOM attempt
 
 **Gaps:** (1) Achieve ANE-eligible decode graph (target 30%+ proxy); (2) Restore throughput ≥ TorchScript; (3) ctx 1024 OOM on recycle; (4) IPJ once ANE routing fixed.
 
@@ -248,9 +257,9 @@ Measured decode ANE proxy: **0.11%** (`830681e7`), **0.41%** (profile `e43e6053`
 
 | Metric | Target | Status (2026-07-01) |
 |--------|--------|---------------------|
-| ANE utilization | **> 0%** first run; **> 60%** gate | **38% @ ctx 512** (Core ML); ~0% MLX |
-| Sustained IPJ | Within **10%** of MLX baseline (or better) | **Not met** — prefill proxy only |
-| Sustained throughput | Document tok/s at ctx 512 and 1024 | MLX 84.2 / Core ML 4.2 @512; Core ML 3.9 @1024 |
+| ANE utilization | **> 0%** first run; **> 60%** gate | **38%** prefill proxy @512; **0.11%** MLState decode @512 |
+| Sustained IPJ | Within **10%** of MLX baseline (or better) | **Not met** — decode on GPU, not ANE |
+| Sustained throughput | Document tok/s at ctx 512 and 1024 | MLX decode 106.7; Core ML MLState decode **7.45** @512 (TorchScript fallback 35.0) |
 | Thermal compliance | Steady-state **≤ 85°C** | MLX aborted 92°C; Core ML completed with post-run abort 87.7°C |
 | Energy attribution | ANE / CPU / GPU joules per step | **Done** — Core ML 200 J ANE @ ctx 512 |
 

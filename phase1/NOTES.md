@@ -136,3 +136,32 @@ Instrumentation added in `phase1/coreml_instrumentation.py`; benchmark logs load
 3. Apply Mistral-style int4 weight quant post-export.
 4. Reduce dynamic ranks in `causalMask` (fixed `end_step=1024` + mask padding).
 5. File Apple FB if `read_state`/`slice_update` SDPA graphs are expected to be ANE-eligible.
+
+## Tooling and commands
+
+| Script | Purpose |
+|--------|---------|
+| `coreml_kv_convert.py` | Export prefill-kv + MLState decode-kv |
+| `coreml_instrumentation.py` | Load models with logged `ComputeUnit` + `MLComputePlan` |
+| `ane_residency_benchmark.py` | Full benchmark; `--compute-units`, `--profile` |
+| `ane_placement_profile.py` | Short decode profile + compute-plan JSON |
+
+```bash
+# Benchmark with instrumentation (writes coreml_load_report.json per run)
+phase1/.venv/bin/python phase1/ane_residency_benchmark.py \
+  --backend coreml --decode --context 512 --compute-units all
+
+# Placement profile (compute plan + powermetrics)
+PYTHONPATH=phase1 phase1/.venv/bin/python phase1/ane_placement_profile.py \
+  --compute-units all --context 512
+```
+
+## Tracked measurement artifacts (committed to repo)
+
+| Run ID | Type | Key metrics | Paths |
+|--------|------|-------------|-------|
+| `ane_residency_20260701T010929Z_830681e7` | MLState decode benchmark | 7.45 t/s, 0.11% ANE | `logs/ane_residency_20260701T010929Z_830681e7*`, `results/ane_residency/ane_residency_20260701T010929Z_830681e7/` |
+| `ane_placement_profile_20260701T012500Z_e43e6053` | ANE placement profile | 17.83 t/s, 0.41% ANE; 0% ANE compute plan | `results/ane_placement_profile/ane_placement_profile_20260701T012500Z_e43e6053/`, `logs/ane_placement_profile_all_ctx512.powermetrics.txt` |
+| `ane_residency_20260701T010854Z_a164b6cc` | Failed (pre-fix OOM) | GPU OOM loading both models | `logs/ane_residency_20260701T010854Z_a164b6cc_ctx512.powermetrics.txt` |
+
+Local-only (not tracked): `models/*.mlpackage/`, `models/qwen2.5-0.5b-decode-kv.pt`.
