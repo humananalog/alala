@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 NUM_LAYERS = 24
 KV_HEADS = 2
@@ -63,12 +66,27 @@ def _causal_mask(end_step: int) -> np.ndarray:
     return np.zeros((1, 1, 1, end_step), dtype=np.float16)
 
 
-def _resolve_decode_backend(decode_path: Path, decode_pt_path: Path | None):
+def _resolve_decode_backend(
+    decode_path: Path,
+    decode_pt_path: Path | None,
+    *,
+    compute_units: str = "all",
+    log_model_load: bool = True,
+):
     """Prefer Core ML decode mlpackage; fall back to TorchScript .pt."""
     if decode_path.exists():
-        import coremltools as ct
+        from coreml_instrumentation import load_coreml_model, log_load_info
 
-        model = ct.models.MLModel(str(decode_path), compute_units=ct.ComputeUnit.ALL)
+        model, info = load_coreml_model(
+            decode_path,
+            role="decode_kv",
+            compute_units=compute_units,
+            capture_compute_plan=False,
+        )
+        if model is None:
+            raise RuntimeError(f"Failed to load decode model {decode_path}: {info.load_error}")
+        if log_model_load:
+            log_load_info(info)
         return "coreml", model, model.make_state()
 
     pt_path = decode_pt_path or DEFAULT_DECODE_PT
@@ -93,6 +111,8 @@ def run_coreml_decode_loop(
     steady_window_s: int,
     decode_tokens: int,
     decode_pt_path: Path | None = None,
+    compute_units: str = "all",
+    log_model_load: bool = True,
 ) -> DecodeRunResult:
     """Autoregressive decode with explicit KV cache hand-off between steps.
 
@@ -109,7 +129,21 @@ def run_coreml_decode_loop(
     if context_length > max_ctx:
         raise ValueError(f"context_length {context_length} > max_ctx {max_ctx}")
 
-    prefill_model = ct.models.MLModel(str(prefill_path), compute_units=ct.ComputeUnit.ALL)
+    from coreml_instrumentation import load_coreml_model, log_load_info, log_runtime_environment
+
+    if log_model_load:
+        log_runtime_environment()
+
+    prefill_model, prefill_info = load_coreml_model(
+        prefill_path,
+        role="prefill_kv",
+        compute_units=compute_units,
+        capture_compute_plan=False,
+    )
+    if prefill_model is None:
+        raise RuntimeError(f"Failed to load prefill model {prefill_path}: {prefill_info.load_error}")
+    if log_model_load:
+        log_load_info(prefill_info)
 
     rng = np.random.default_rng(context_length)
     prompt = np.zeros((1, max_ctx), dtype=np.int32)
@@ -133,8 +167,20 @@ def run_coreml_decode_loop(
     logits = np.array(prefill_out["logits"])
     next_token = _greedy_token(logits[:, context_length - 1 : context_length, :])
 
-    decode_runtime, decode_runner, decode_state = _resolve_decode_backend(decode_path, decode_pt_path)
+    decode_runtime, decode_runner, decode_state = _resolve_decode_backend(
+        decode_path,
+        decode_pt_path,
+        compute_units=compute_units,
+        log_model_load=log_model_load,
+    )
     _seed_decode_state(key_cache, value_cache)
+    if log_model_load:
+        logger.info(
+            "decode_loop config: compute_units=%s context_length=%d max_ctx=%d",
+            compute_units,
+            context_length,
+            max_ctx,
+        )
 
     start = time.monotonic()
     steady_start = start + max(0, duration_s - steady_window_s)
@@ -204,11 +250,22 @@ def run_coreml_prefill_proxy(
     trace_context_size: int,
     duration_s: int,
     steady_window_s: int,
+    compute_units: str = "all",
+    log_model_load: bool = True,
 ) -> DecodeRunResult:
     """Legacy prefill-only proxy (no KV)."""
-    import coremltools as ct
+    from coreml_instrumentation import load_coreml_model, log_load_info
 
-    mlmodel = ct.models.MLModel(str(model_path), compute_units=ct.ComputeUnit.ALL)
+    mlmodel, info = load_coreml_model(
+        model_path,
+        role="prefill_only_proxy",
+        compute_units=compute_units,
+        capture_compute_plan=False,
+    )
+    if mlmodel is None:
+        raise RuntimeError(f"Failed to load prefill-only model {model_path}: {info.load_error}")
+    if log_model_load:
+        log_load_info(info)
     shape = (1, trace_context_size)
     rng = np.random.default_rng(context_length)
     input_ids = np.zeros(shape, dtype=np.int32)

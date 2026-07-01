@@ -77,4 +77,62 @@ Same 2-input interface (`inputIds`, `causalMask`); KV held in traced module buff
 | `ane_residency_20260701T005247Z_b8d6539e` | Core ML | TorchScript .pt | 512 | **35.0** | 0.3% | 83.4°C |
 | `ane_residency_20260701T010929Z_830681e7` | Core ML | **MLState .mlpackage** | 512 | **7.45** | **0.11%** | 83.5°C |
 
-**Status:** Core ML decode export **unblocked**; first end-to-end MLState decode measured. ANE residency **not recovered** (0.11% vs 38% prefill proxy). Throughput regression vs TorchScript (7.45 vs 35 t/s) — likely GPU/CPU routing + compile overhead on stateful 0.5B graph. Next: ANE placement profiling, int4 weight quant (Mistral export pattern), graph simplification.
+**Status:** Core ML decode export **unblocked**; first end-to-end MLState decode measured. ANE residency **not recovered** (0.11% vs 38% prefill proxy). Root cause identified: **decode graph does not compile for ANE** (see ANE Placement Diagnosis below).
+
+## Compute unit configuration (reference run `ane_residency_20260701T010929Z_830681e7`)
+
+| Setting | Value |
+|---------|-------|
+| Prefill load | `ct.ComputeUnit.ALL` via `coreml_instrumentation.load_coreml_model()` |
+| Decode load | `ct.ComputeUnit.ALL` (lazy, after prefill) |
+| Env flags | None (`COREML_VERBOSE`, `E5RT_LOG_LEVEL`, etc. unset) |
+| Decode runtime | `coreml` (MLState `.mlpackage`, not TorchScript) |
+| Result | 7.45 t/s sustained, **0.11% ANE proxy**, 83.5°C steady |
+
+Instrumentation added in `phase1/coreml_instrumentation.py`; benchmark logs load config + `MLComputePlan` device class fractions at startup.
+
+## ANE Placement Diagnosis (2026-07-01)
+
+`MLComputePlan` analysis (`phase1/ane_placement_profile.py`, run `ane_placement_profile_20260701T012500Z_e43e6053`):
+
+| Model | Ops | ANE preferred | GPU preferred | Source dialect |
+|-------|-----|---------------|---------------|----------------|
+| `qwen2.5-0.5b-ane.mlpackage` (prefill proxy) | 2573 | **48.7%** | 0.2% | TorchExport::ATEN |
+| `qwen2.5-0.5b-prefill-kv.mlpackage` | 4044 | **31.0%** | 8.3% | TorchExport::ATEN |
+| `qwen2.5-0.5b-decode-kv.mlpackage` (MLState) | 5165 | **0.0%** | **44.0%** | TorchScript |
+
+**Forced ANE compile (`ComputeUnit.CPU_AND_NE`) on decode:** fails at load with `MILCompilerForANE error: failed to compile ANE model using ANEF. ANECCompile() FAILED.` Prefill models compile fine under `CPU_AND_NE`.
+
+### Hypotheses (ranked by likelihood)
+
+1. **ANE compiler rejection of stateful MLState graph** — decode includes `ios18.read_state`, `ios18.slice_update`, dynamic `shape`/`gather`/`cast` chains tied to `causalMask` length; ANE compile fails outright when GPU is disallowed. Matches 0% ANE in compute plan + `CPU_AND_NE` load failure.
+2. **TorchScript export dialect vs torch.export** — decode exported via `torch.jit.trace` (TorchScript); prefill via `torch.export` (ATEN). Prefill achieves 31–49% ANE placement; decode does not. Re-export decode with `torch.export` may improve eligibility.
+3. **Dynamic `causalMask` rank-4 shape** (`end_step` RangeDim 1..1024) — forces runtime shape inference; GPU-preferred ops (`gather`, `slice_by_index`, `greater_equal`) dominate decode plan. Prefill uses fixed `(1, 1024)` input.
+4. **MLState in-place cache mutation** — 24 layers × `slice_update` on 1 GB state tensors; ANE may refuse read-modify-write on large state. Prefill emits cache as outputs (no state).
+5. **Graph size / working set** — 5165 ops + 24×(1024×64) state vs 2573 ops prefill-only; memory footprint may push planner to GPU even under `ALL`.
+6. **SDPA + RoPE slice patterns** — `ios18.scaled_dot_product_attention` is ANE-capable in prefill (listed in ANE ops) but decode SDPA is GPU-only in plan, likely due to surrounding state/mask ops.
+
+### Quick configuration experiments
+
+| Experiment | t/s sustained | ANE proxy | Notes |
+|------------|---------------|-----------|-------|
+| Reference `830681e7` (`ALL`, ctx 512, 30s) | 7.45 | 0.11% | Baseline |
+| Profile `e43e6053` (`ALL`, ctx 512, ~17s) | **17.83** | **0.41%** | Warmed loop; still ~0% ANE in plan |
+| `CPU_AND_NE` decode load | — | — | **Load fails** (ANE compile error) |
+| `COREML_VERBOSE=1` | not run | — | Use Instruments Core ML template for per-op confirmation |
+
+**Conclusion:** Low ANE is not a benchmark artifact — Core ML's compile-time plan assigns **zero** decode ops to ANE and cannot compile the graph for ANE-only execution. Powermetrics 0.11% matches GPU+CPU dominated execution.
+
+### Manual profiling (Instruments)
+
+1. Instruments.app → **Core ML** template.
+2. Run `phase1/ane_placement_profile.py` or `ane_residency_benchmark.py --profile --backend coreml --decode`.
+3. Compare decode process op placement vs `qwen2.5-0.5b-ane.mlpackage` prefill proxy.
+
+### Next steps (from diagnosis)
+
+1. Re-export decode with `torch.export` + ATEN dialect (match prefill path).
+2. Explore KV as explicit I/O (no MLState) with fixed-shape masks if ANE compiles.
+3. Apply Mistral-style int4 weight quant post-export.
+4. Reduce dynamic ranks in `causalMask` (fixed `end_step=1024` + mask padding).
+5. File Apple FB if `read_state`/`slice_update` SDPA graphs are expected to be ANE-eligible.

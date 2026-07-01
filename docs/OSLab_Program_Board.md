@@ -226,7 +226,23 @@ Stateful decode path landed in `phase1/kv_decode.py` + `--decode` on `ane_reside
 
 **Decision:** Core ML decode export **unblocked**; autoregressive loop runs fully on Core ML with `MLState` I/O (`inputIds` + `causalMask`, in-place cache). ANE residency **not recovered** during decode (0.11% vs 38% prefill proxy; vs 0.3% TorchScript baseline). Throughput **regressed** vs TorchScript (7.45 vs 35 t/s) — investigate compute-unit placement, int4 quant, and graph size.
 
-**Gaps:** (1) Recover meaningful ANE residency during decode (target 30%+); (2) Restore throughput to ≥ TorchScript baseline; (3) ctx 1024 OOM on full prefill-kv recycle when both models resident; (4) IPJ comparison once ANE routing improves.
+### ANE Placement Status (2026-07-01)
+
+**Diagnosis complete.** `MLComputePlan` shows decode model **0% ANE / 44% GPU** op placement vs prefill proxy **49% ANE**. Forcing `ComputeUnit.CPU_AND_NE` on decode **fails ANE compile** (`ANECCompile() FAILED`); prefill models compile fine.
+
+| Artifact | ANE plan % | GPU plan % | `CPU_AND_NE` |
+|----------|------------|------------|--------------|
+| `qwen2.5-0.5b-ane.mlpackage` | 48.7% | 0.2% | ✅ |
+| `qwen2.5-0.5b-prefill-kv.mlpackage` | 31.0% | 8.3% | ✅ |
+| `qwen2.5-0.5b-decode-kv.mlpackage` | **0.0%** | **44.0%** | ❌ ANE compile fail |
+
+Measured decode ANE proxy: **0.11%** (`830681e7`), **0.41%** (profile `e43e6053` after warmup). Reference run used `ComputeUnit.ALL`, no Core ML debug env vars.
+
+**Suspected causes (ranked):** (1) MLState `read_state`/`slice_update` graph rejected by ANE compiler; (2) TorchScript vs torch.export dialect; (3) dynamic `causalMask` shape; (4) stateful cache RMW footprint.
+
+**Next:** Re-export decode via `torch.export` (ATEN); try fixed-shape mask / explicit cache I/O; int4 quant; Instruments Core ML template confirmation. Profile artifacts: `results/ane_placement_profile/ane_placement_profile_20260701T012500Z_e43e6053/`.
+
+**Gaps:** (1) Achieve ANE-eligible decode graph (target 30%+ proxy); (2) Restore throughput ≥ TorchScript; (3) ctx 1024 OOM on recycle; (4) IPJ once ANE routing fixed.
 
 ### Success Metrics (First Experiment)
 

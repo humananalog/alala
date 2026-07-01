@@ -46,6 +46,13 @@ MODELS_DIR = REPO_ROOT / "models"
 sys.path.insert(0, str(HARNESS_DIR))
 sys.path.insert(0, str(PHASE1_DIR))
 
+from coreml_instrumentation import (  # noqa: E402
+    COMPUTE_UNIT_CHOICES,
+    dump_load_report,
+    load_coreml_model,
+    log_load_info,
+    log_runtime_environment,
+)
 from kv_decode import (  # noqa: E402
     run_coreml_decode_loop,
     run_coreml_prefill_proxy,
@@ -108,6 +115,7 @@ class StepMetrics:
     decode_mode: bool
     kv_cache_active: bool
     decode_runtime: str | None
+    compute_units: str | None = None
 
 
 def _mean(values: list[float]) -> float | None:
@@ -178,6 +186,8 @@ def run_workload(
     duration_s: int,
     steady_window_s: int,
     decode_tokens: int,
+    compute_units: str = "all",
+    log_model_load: bool = True,
 ) -> tuple[int, float, float, float | None, bool, str | None]:
     """Run one benchmark step; returns tokens, tps, tps_sustained, peak_mem, kv_cache_active, decode_runtime."""
     if backend == "mlx":
@@ -218,6 +228,8 @@ def run_workload(
             duration_s=duration_s,
             steady_window_s=steady_window_s,
             decode_tokens=decode_tokens,
+            compute_units=compute_units,
+            log_model_load=log_model_load,
         )
     else:
         assert prefill_only_path is not None
@@ -227,6 +239,8 @@ def run_workload(
             trace_context_size=coreml_max_ctx,
             duration_s=duration_s,
             steady_window_s=steady_window_s,
+            compute_units=compute_units,
+            log_model_load=log_model_load,
         )
     return (
         result.tokens_generated,
@@ -292,10 +306,11 @@ def build_step_record(
         "decode_mode": step.decode_mode,
         "kv_cache_active": step.kv_cache_active,
         "decode_runtime": step.decode_runtime,
+        "compute_units": step.compute_units,
         "notes": (
             f"Phase 1 ANE residency; backend={step.backend}; "
             f"decode_mode={step.decode_mode}; kv_cache_active={step.kv_cache_active}; "
-            f"decode_runtime={step.decode_runtime}; "
+            f"decode_runtime={step.decode_runtime}; compute_units={step.compute_units}; "
             "ane_utilization_proxy = ane_energy / (cpu+gpu+ane) from powermetrics."
         ),
         "powermetrics_log_path": step.powermetrics_log_path,
@@ -307,8 +322,9 @@ def print_summary(steps: list[StepMetrics], aborted: bool, abort_reason: str | N
     for step in steps:
         mode = "decode+kv" if step.kv_cache_active else ("decode" if step.decode_mode else "prefill_proxy")
         runtime = f" runtime={step.decode_runtime}" if step.decode_runtime else ""
+        cu = f" compute_units={step.compute_units}" if step.compute_units else ""
         print(
-            f"  ctx={step.context_length} backend={step.backend} mode={mode}{runtime} "
+            f"  ctx={step.context_length} backend={step.backend} mode={mode}{runtime}{cu} "
             f"tps_peak={step.tokens_per_second:.2f} tps_sustained={step.tokens_per_second_sustained:.2f} "
             f"ane_proxy={step.ane_utilization_proxy}% temp_steady={step.temp_steady_state_c}C"
         )
@@ -349,8 +365,32 @@ def run_benchmark(args: argparse.Namespace) -> int:
     print(f"[alala] run_id={run_id}")
     print(
         f"[alala] backend={backend} decode={args.decode} model={model_label} "
-        f"contexts={contexts} temp_threshold={args.temp_threshold}C"
+        f"contexts={contexts} temp_threshold={args.temp_threshold}C "
+        f"compute_units={args.compute_units}"
     )
+
+    if backend == "coreml":
+        log_runtime_environment()
+        load_infos = []
+        if args.decode and prefill_kv_path and decode_kv_path:
+            for role, path in (("prefill_kv", prefill_kv_path), ("decode_kv", decode_kv_path)):
+                if path.exists():
+                    _, info = load_coreml_model(path, role=role, compute_units=args.compute_units)
+                    load_infos.append(info)
+                    log_load_info(info)
+        elif prefill_only_path:
+            _, info = load_coreml_model(
+                prefill_only_path,
+                role="prefill_only_proxy",
+                compute_units=args.compute_units,
+            )
+            load_infos.append(info)
+            log_load_info(info)
+        dump_load_report(
+            load_infos,
+            result_dir / "coreml_load_report.json",
+            environment=log_runtime_environment(),
+        )
 
     mlx_runner = DecodeRunner(model_label) if backend == "mlx" else None
     steps: list[StepMetrics] = []
@@ -387,6 +427,8 @@ def run_benchmark(args: argparse.Namespace) -> int:
                 duration_s=args.step_duration,
                 steady_window_s=args.steady_window,
                 decode_tokens=args.decode_tokens,
+                compute_units=args.compute_units,
+                log_model_load=False,
             )
         finally:
             session.stop()
@@ -432,6 +474,7 @@ def run_benchmark(args: argparse.Namespace) -> int:
             decode_mode=args.decode,
             kv_cache_active=kv_active,
             decode_runtime=decode_runtime,
+            compute_units=args.compute_units if backend == "coreml" else None,
         )
         steps.append(step)
         write_jsonl(jsonl_path, build_step_record(run_id=run_id, step=step, hardware=hardware, timestamp=utc_now_iso()))
@@ -465,6 +508,7 @@ def run_benchmark(args: argparse.Namespace) -> int:
         "abort_reason": abort_reason,
         "decode_mode": args.decode,
         "kv_cache_active": all(s.kv_cache_active for s in steps) if steps else False,
+        "compute_units": args.compute_units if backend == "coreml" else None,
         "hardware": hardware,
         "powermetrics_log_path": None,
     }
@@ -518,17 +562,40 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--temp-threshold", type=float, default=DEFAULT_TEMP_THRESHOLD_C)
     parser.add_argument("--cooldown-seconds", type=int, default=DEFAULT_COOLDOWN_S)
     parser.add_argument("--interval-ms", type=int, default=DEFAULT_INTERVAL_MS)
+    parser.add_argument(
+        "--compute-units",
+        choices=COMPUTE_UNIT_CHOICES,
+        default="all",
+        help="Core ML compute unit preference (all, cpu_and_ne, cpu_and_gpu, cpu_only)",
+    )
+    parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="Short profiling run (20s step, 15s steady, ctx 512 only) then exit",
+    )
+    parser.add_argument("--coreml-verbose", action="store_true", help="Set COREML_VERBOSE=1 for profiling")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
+    if args.profile:
+        args.backend = "coreml"
+        args.decode = True
+        args.context = "512"
+        args.step_duration = 20
+        args.steady_window = 15
+        args.cooldown_seconds = 0
     if args.decode and args.temp_threshold == DEFAULT_TEMP_THRESHOLD_C:
         args.temp_threshold = DEFAULT_DECODE_TEMP_THRESHOLD_C
     if args.backend == "coreml" and not args.decode and not args.model:
         args.model = str(DEFAULT_COREML_PREFILL_ONLY)
     if args.backend == "mlx" and args.model is None:
         args.model = DEFAULT_MLX_MODEL
+    if args.coreml_verbose:
+        import os
+
+        os.environ.setdefault("COREML_VERBOSE", "1")
     try:
         return run_benchmark(args)
     except HarnessError as exc:
